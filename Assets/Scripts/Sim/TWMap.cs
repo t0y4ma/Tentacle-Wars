@@ -410,48 +410,41 @@ namespace TW.Sim
                 {
                     // ---- 2人 ----
                     new Builder("duel", "対峙", 2)
-                        .Player(-7.5f, -3.5f, 20).Player(-5.0f, -0.8f, 10)
-                        .Neutral(-7.0f, 2.5f, 20).Neutral(-3.0f, -4.0f, 30).Neutral(-2.8f, 1.8f, 40)
-                        .Neutral(-4.6f, 3.9f, 25).Neutral(-1.0f, -2.2f, 50).Neutral(0f, 0f, 100)
+                        .Player(-7.0f, -3.0f, 20)
+                        .Neutral(-6.5f, 2.5f, 20).Neutral(-3.0f, -4.0f, 25).Neutral(-2.5f, 1.5f, 40).Neutral(0f, 0f, 80)
                         .Wall(-1.2f, 3.6f, 0.9f).M,
                     new Builder("corridor", "回廊", 2)
-                        .Player(-8.2f, -3.8f, 20).Player(-8.2f, 0.6f, 10)
-                        .Neutral(-5.8f, -1.6f, 20).Neutral(-5.5f, 2.8f, 25).Neutral(-3.2f, -4.0f, 30)
-                        .Neutral(-2.8f, 0.2f, 40).Neutral(-1.2f, 3.6f, 35)
+                        .Player(-8.0f, -3.0f, 20)
+                        .Neutral(-5.5f, -0.5f, 20).Neutral(-3.0f, -4.0f, 30).Neutral(-2.5f, 2.5f, 40)
                         .Wall(0f, 0f, 1.2f).Wall(-1.4f, -2.2f, 0.6f).M,
                     new Builder("archipelago", "群島", 2)
-                        .Player(-8.4f, -4.4f, 25)
-                        .Neutral(-6.3f, -4.2f, 10).Neutral(-8.2f, -2.0f, 10).Neutral(-5.9f, -1.8f, 15)
-                        .Neutral(-7.6f, 0.6f, 15).Neutral(-3.8f, -3.6f, 15).Neutral(-3.6f, -0.8f, 20)
-                        .Neutral(-5.6f, 2.4f, 20).Neutral(-1.6f, 1.2f, 30).Neutral(-3.4f, 3.8f, 25)
-                        .Neutral(-1.2f, -4.2f, 20).Neutral(0f, 0f, 60).M,
+                        .Player(-8.0f, -4.0f, 25)
+                        .Neutral(-6.0f, -1.5f, 10).Neutral(-4.0f, -4.0f, 15).Neutral(-3.5f, 1.0f, 20)
+                        .Neutral(-6.0f, 3.5f, 15).Neutral(-1.0f, -2.0f, 25).Neutral(0f, 0f, 50).M,
                     // ---- 3人 ----
                     new Builder("triad", "三角", 3)
                         .Player(0f, -4.6f, 20)
-                        .Neutral(-1.7f, -3.4f, 15).Neutral(1.7f, -3.4f, 15).Neutral(0f, -2.0f, 30).Neutral(0f, 0f, 80).M,
+                        .Neutral(0f, -2.4f, 30).Neutral(3.12f, -1.8f, 40).Neutral(0f, 0f, 80).M,
                     new Builder("ring", "環", 3)
                         .Player(0f, -4.6f, 20)
-                        .Neutral(2.77f, -1.6f, 30).Neutral(-1.5f, -3.6f, 15).Neutral(1.5f, -3.6f, 15).Neutral(0f, 0f, 100)
+                        .Neutral(2.77f, -1.6f, 30).Neutral(1.5f, -3.6f, 15).Neutral(0f, 0f, 100)
                         .Wall(0f, -2.0f, 0.6f).M,
                     new Builder("spokes", "放射", 3)
                         .Player(0f, -4.6f, 20)
-                        .Neutral(0f, -3.0f, 15).Neutral(0f, -1.5f, 25).Neutral(2.6f, -1.5f, 40).Neutral(0f, 0f, 100)
+                        .Neutral(0f, -2.6f, 20).Neutral(2.6f, -1.5f, 40).Neutral(0f, 0f, 100)
                         .Wall(1.8f, -3.12f, 0.5f).Wall(-1.8f, -3.12f, 0.5f).M,
                     // ---- 4人 ----
                     new Builder("corners", "四隅", 4)
                         .Player(-8.3f, -4.4f, 20)
-                        .Neutral(-5.8f, -4.2f, 15).Neutral(-8.2f, -1.8f, 15).Neutral(-5.2f, -1.6f, 30)
-                        .Neutral(-2.5f, -2.0f, 25).Neutral(0f, -4.0f, 30).Neutral(-6.0f, 0f, 20).Neutral(0f, 0f, 100).M,
+                        .Neutral(-5.5f, -3.5f, 15).Neutral(-5.0f, 0f, 25).Neutral(0f, -3.5f, 30).Neutral(0f, 0f, 80).M,
                     new Builder("cross", "十字", 4)
                         .Player(-8.3f, -4.4f, 20)
-                        .Neutral(-6.0f, -3.0f, 20).Neutral(-3.0f, -4.4f, 25).Neutral(-7.6f, -1.2f, 15)
-                        .Neutral(-2.4f, -1.6f, 35).Neutral(-2.0f, 0f, 30).Neutral(0f, 0f, 80)
+                        .Neutral(-6.0f, -2.0f, 20).Neutral(-2.5f, -1.5f, 35).Neutral(0f, 0f, 80)
                         .Wall(0f, -3.2f, 0.9f).Wall(-4.5f, 0f, 0.9f).M,
                     new Builder("lattice", "格子", 4)
                         .Player(-8.3f, -4.4f, 25)
-                        .Neutral(-6.0f, -4.2f, 10).Neutral(-3.6f, -4.2f, 15).Neutral(-1.2f, -4.2f, 20)
-                        .Neutral(-8.3f, -2.0f, 10).Neutral(-6.0f, -2.0f, 15).Neutral(-3.6f, -2.0f, 20).Neutral(-1.2f, -2.0f, 30)
-                        .Neutral(-7.2f, 0f, 15).Neutral(-4.8f, 0f, 25).Neutral(-2.4f, 0f, 35).Neutral(0f, 0f, 50).M,
+                        .Neutral(-5.0f, -4.0f, 15).Neutral(-2.0f, -1.8f, 30).Neutral(0f, -4.0f, 20)
+                        .Neutral(-5.0f, 0f, 20).Neutral(0f, 0f, 50).M,
                 };
                 return all;
             }

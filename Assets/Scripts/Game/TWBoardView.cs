@@ -183,9 +183,9 @@ public class TWBoardView
             for (int n = from; n < to; n++)
             {
                 Vector2 pos = PathPoint(a, b, perp, n + 0.5f, t.Length, t.Id, time);
-                float size = 0.2f;
+                float size = 0.15f;   // ノード間隔（Balance.NodeLength）より少し小さく
                 Color nc = col * 0.8f;
-                if (t.State == TentacleState.Flying) { size = 0.24f; nc = Color.Lerp(col, Color.white, 0.35f); }
+                if (t.State == TentacleState.Flying) { size = 0.18f; nc = Color.Lerp(col, Color.white, 0.35f); }
                 else if (t.State == TentacleState.Retracting) nc = col * 0.6f;
                 nc.a = 1f;
                 Dot(pos, size, nc, 2);   // 触手は細胞（5〜10）より下に描く
@@ -195,7 +195,7 @@ public class TWBoardView
             foreach (var p in t.Packets)
             {
                 float pos = Mathf.Min(p.Pos + interp * Balance.PacketNodesPerTick, t.Length);
-                Dot(PathPoint(a, b, perp, pos, t.Length, t.Id, time), p.Amount >= 2 ? 0.34f : 0.28f, pcol, 3);
+                Dot(PathPoint(a, b, perp, pos, t.Length, t.Id, time), p.Amount >= 2 ? 0.27f : 0.22f, pcol, 3);
             }
         }
     }

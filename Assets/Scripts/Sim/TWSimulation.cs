@@ -19,22 +19,22 @@ namespace TW.Sim
         // 自己生産間隔(tick)。等級が上がるほど遅い
         public static readonly int[] SelfInterval = { 40, 50, 60, 80, 100, 120 };
         // 触手1本の送出間隔。粒は常に1ずつで、端数のある間隔を表すため 1/4 tick 単位で持つ。
-        // Spore 2秒, Embryo 1秒, Pulsar 0.75秒, Gamma 0.5秒, Solar 0.25秒, Dominator 0.125秒(2.5tick)
+        // Spore 2秒, Embryo 1.25秒, Pulsar 1秒, Gamma 0.75秒, Solar 0.55秒, Dominator 0.4秒(8tick)
         public const int SubTicks = 4;
-        public static readonly int[] SendIntervalSub = { 160, 80, 60, 40, 20, 10 };
+        public static readonly int[] SendIntervalSub = { 160, 100, 80, 60, 44, 32 };
         public static readonly int[] MaxTentacles = { 1, 2, 2, 3, 3, 3 };
 
         // 触手を出している間の自己生産クールダウン倍率 k = 3/2
         public const int SlowNum = 3, SlowDen = 2;
 
-        public const int ExtendTicksPerNode = 2;   // 伸長速度（2tickで1ノード）
+        public const int ExtendTicksPerNode = 3;   // 伸長速度（3tickで1ノード）
         public const int ExtendCostPerNode = 1;    // 伸長コスト
         public const int RetractNodesPerTick = 1;  // 撤回時の返還速度
         public const int FlyNodesPerTick = 1;      // 切断後に先端側が流れ込む速度
         public const int PacketNodesPerTick = 1;   // 送出したエネルギー粒が触手上を進む速度
         // 座標は 1ワールド単位 = 100 の整数で扱う（端末ごとの小数誤差で盤面がずれないように）
         public const int Unit = 100;
-        public const int NodeLengthU = 35;         // 1ノードの長さ
+        public const int NodeLengthU = 21;         // 1ノードの長さ
         public const int PathEndRadiusU = 50;      // ノード数計算に使う細胞の名目半径
         public const float NodeLength = NodeLengthU / (float)Unit;
         public const float PathEndRadius = PathEndRadiusU / (float)Unit;
@@ -525,11 +525,11 @@ namespace TW.Sim
                 {
                     dst.GaugeOwner = owner;
                     dst.Gauge += amt;
-                    if (dst.Gauge > dst.CaptureValue)
+                    if (dst.Gauge >= dst.CaptureValue)   // 必要量ちょうどで占領
                     {
                         // 中立がため込んでいたエネルギーを持ったまま占領者の色に変わる。
-                        // 2以上の粒（Dominatorの送出・オーバーフロー）で必要量を越えた分は上乗せする
-                        int surplus = dst.Gauge - dst.CaptureValue - 1;
+                        // 2以上の粒（オーバーフローなど）で必要量を越えた分は上乗せする
+                        int surplus = dst.Gauge - dst.CaptureValue;
                         dst.Owner = owner;
                         dst.Gauge = 0; dst.GaugeOwner = -1;
                         dst.Energy = Math.Min(dst.Energy + surplus, dst.MaxEnergy);

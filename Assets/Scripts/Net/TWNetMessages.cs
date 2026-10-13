@@ -3,7 +3,8 @@ using Mirror;
 
 public static class TWProtocol
 {
-    public const int Version = 3;   // 3: 押し合いは接点で届いた扱い・押し戻しながら伸びる（2: 押し合い・片方向の接続）
+    public const int Version = 6;   // 6: COMの強さを3つの時間で（5: 席ごとの段階、4: 部屋ごと）
+    // 3: 押し合いは接点で届いた扱い・押し戻しながら伸びる（2: 押し合い・片方向の接続）
     public const int MaxNameLength = 12;
     public const int MaxRoomNameLength = 20;
     public const int MaxChatLength = 120;
@@ -19,7 +20,8 @@ public struct TWJoinRoom : NetworkMessage { public int RoomId; public string Pas
 public struct TWLeaveRoom : NetworkMessage { }
 public struct TWRoomSettings : NetworkMessage { public string MapJson; public int TimeLimitSec; public bool AllowSpectators; }
 public struct TWTakeSeat : NetworkMessage { public int Seat; }                 // -1 = 観戦席へ
-public struct TWSetCom : NetworkMessage { public int Seat; public bool Com; }   // 部屋主のみ
+/// <summary>COMを入れる／外す。COMの席に Com = true で送ると強さの変更</summary>
+public struct TWSetCom : NetworkMessage { public int Seat; public bool Com; public int React; public int Gaze; public int Move; }   // 部屋主のみ
 public struct TWSetReady : NetworkMessage { public bool Ready; }
 public struct TWStartGame : NetworkMessage { }                                  // 部屋主のみ
 public struct TWChat : NetworkMessage { public string Text; }
@@ -44,6 +46,7 @@ public struct TWSeatInfo
     public string Name;
     public bool Occupied;     // 人が座っている（切断中も含む）
     public bool Com;          // COM の席
+    public int ComReact, ComGaze, ComMove;   // COM の強さ（TW.Sim.ComProfile）
     public bool Ready;
     public bool Connected;
     public bool Host;
@@ -75,7 +78,8 @@ public struct TWCmdEntry { public int Tick; public byte Player; public byte Type
 public struct TWTickBundle : NetworkMessage { public int UpTo; public TWCmdEntry[] Cmds; public int HashTick; public uint Hash; }
 
 public struct TWSnapshot : NetworkMessage { public byte[] State; }
-public struct TWComDuty : NetworkMessage { public int[] Seats; }                 // 部屋主が代打ちする席
+/// <summary>部屋主が代打ちする席。Profiles は席ごとに 次の手・目移り・つなぐ時間 の3つずつ</summary>
+public struct TWComDuty : NetworkMessage { public int[] Seats; public int[] Profiles; }                 // 部屋主が代打ちする席
 public struct TWGameOver : NetworkMessage { public int Winner; public int Tick; }
 public struct TWError : NetworkMessage { public string Text; }
 public struct TWKicked : NetworkMessage { public string Reason; }               // 部屋がなくなった等でロビーへ戻す

@@ -14,6 +14,7 @@ public class TWGameScreen : TWScreen
     Action onBack;
     string backLabel = "ステージ選択へ";
     TWOnlineMatch online;        // null ならローカル対戦
+    ComProfile[] comProfiles;    // 席ごとのCOMの強さ（null ならふつう）
 
     Simulation sim;
     readonly List<SimpleAI> ais = new List<SimpleAI>();
@@ -26,6 +27,8 @@ public class TWGameScreen : TWScreen
     Text timer, hint, center;
     GameObject menu, result;
     RectTransform chipRow;
+    RectTransform tipRect;       // 細胞のマウスオーバー表示
+    Text tipText;
 
     // 入力
     enum DragMode { None, Connect, Swipe }
@@ -36,9 +39,10 @@ public class TWGameScreen : TWScreen
     readonly List<Vector2> swipeTrail = new List<Vector2>();
 
     /// <summary>ローカル対戦の準備。localSeat が -1 なら全員 COM で観戦</summary>
-    public void Launch(MapDef map, int localSeat, Action onBack, string backLabel = "ステージ選択へ")
+    public void Launch(MapDef map, int localSeat, Action onBack, string backLabel = "ステージ選択へ", ComProfile[] comProfiles = null)
     {
         this.map = map;
+        this.comProfiles = comProfiles;
         localPlayer = localSeat;
         this.onBack = onBack;
         this.backLabel = backLabel;
@@ -94,7 +98,7 @@ public class TWGameScreen : TWScreen
         {
             sim = new Simulation(map);
             for (int p = 0; p < sim.PlayerCount; p++)
-                if (p != localPlayer) ais.Add(new SimpleAI(p, UnityEngine.Random.Range(1, 99999)));
+                if (p != localPlayer) ais.Add(new SimpleAI(p, UnityEngine.Random.Range(1, 99999)).SetProfile(comProfiles != null && p < comProfiles.Length ? comProfiles[p] : SimpleAI.Presets[SimpleAI.DefaultLevel]));
         }
         board.Build(sim);
         acc = 0; paused = false; resultShown = false; drag = DragMode.None;
@@ -132,11 +136,23 @@ public class TWGameScreen : TWScreen
         center = TWUI.Label(Root, "", 120, TWUI.Text, TextAnchor.MiddleCenter, "Center");
         TWUI.Place(center.rectTransform, 0.2f, 0.35f, 0.8f, 0.65f);
         var ol = center.gameObject.AddComponent<Outline>(); ol.effectColor = new Color(0, 0, 0, 0.8f); ol.effectDistance = new Vector2(3, -3);
+
+        // 細胞のマウスオーバー表示（触手の本数・次のレベルまで）
+        var plate = TWUI.Panel(Root, new Color(TWUI.Ink.r, TWUI.Ink.g, TWUI.Ink.b, 0.92f), true, "CellTip");
+        tipRect = plate.rectTransform;
+        tipRect.anchorMin = tipRect.anchorMax = new Vector2(0.5f, 0.5f);
+        tipRect.pivot = new Vector2(0.5f, 0f);
+        tipText = TWUI.Label(plate.transform, "", 24, TWUI.Text, TextAnchor.MiddleCenter, "Text");
+        tipText.resizeTextForBestFit = false;
+        tipText.horizontalOverflow = HorizontalWrapMode.Overflow; tipText.verticalOverflow = VerticalWrapMode.Overflow;
+        TWUI.Fill(tipText.rectTransform);
+        foreach (var g in plate.GetComponentsInChildren<Graphic>(true)) g.raycastTarget = false;
+        plate.gameObject.SetActive(false);
     }
 
     void BuildChips()
     {
-        foreach (Transform c in chipRow) TWUI.Destroy(c.gameObject);
+        TWUI.Clear(chipRow);
         chipTexts.Clear();
         for (int p = 0; p < sim.PlayerCount; p++)
         {
@@ -303,6 +319,7 @@ public class TWGameScreen : TWScreen
             if (sim.Over && !resultShown) ShowResult();
         }
         UpdateHud();
+        UpdateTip();
 
         board.Render(sim, sim.Over ? 0f : interp);
         DrawOverlays();
@@ -325,6 +342,50 @@ public class TWGameScreen : TWScreen
             float f = (float)(k + 1) / swipeTrail.Count;
             board.Dot(swipeTrail[k], 0.12f * f, new Color(1, 1, 1, 0.8f * f), 30);
         }
+    }
+
+    /// <summary>マウスを乗せた細胞の情報（触手の本数・次のレベルまでの必要エネルギー）を細胞の上に出す</summary>
+    void UpdateTip()
+    {
+        if (tipRect == null) return;
+        int ci = -1;
+        bool overUi = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
+        bool menuOpen = menu != null && menu.activeInHierarchy;
+        if (Mouse.current != null && !overUi && !menuOpen && !resultShown && drag != DragMode.Swipe) ci = CellAt(pointerWorld, 0.1f);
+        if (ci < 0) { if (tipRect.gameObject.activeSelf) tipRect.gameObject.SetActive(false); return; }
+
+        var c = sim.Cells[ci];
+        string text;
+        if (c.Owner < 0)
+        {
+            text = "中立　占領に必要 " + c.CaptureValue;
+            if (c.GaugeOwner >= 0 && c.Gauge > 0) text += "\n<color=#" + ColorUtility.ToHtmlStringRGB(TWBoardView.PlayerColors[c.GaugeOwner]) + ">" + WhoIs(c.GaugeOwner) + "</color> が " + c.Gauge + " ためています";
+        }
+        else
+        {
+            int g = c.Grade;
+            string next = g >= Balance.GradeCount - 1 ? "最大レベル" : "次のレベルまで あと <color=#F2B544>" + Mathf.Max(0, Balance.Up[g] - c.Energy) + "</color>";
+            text = "Lv" + (g + 1) + " " + Balance.GradeNames[g] + "　触手 <color=#9BE15D>" + sim.ActiveCount(c.Id) + "/" + Balance.MaxTentacles[g] + "</color>\n" + next;
+        }
+        if (tipText.text != text) tipText.text = text;
+        if (!tipRect.gameObject.activeSelf) tipRect.gameObject.SetActive(true);
+        tipRect.SetAsLastSibling();
+        tipRect.sizeDelta = new Vector2(tipText.preferredWidth + 32, tipText.preferredHeight + 16);
+
+        // 細胞の少し上に置く（上にはみ出すなら下に）
+        var parent = (RectTransform)tipRect.parent;
+        var canvas = parent.GetComponentInParent<Canvas>().rootCanvas;
+        Camera uiCam = canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
+        Vector2 top, bottom;
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(parent, App.Cam.WorldToScreenPoint(new Vector3(c.X, c.Y + c.Radius + 0.12f, 0)), uiCam, out top);
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(parent, App.Cam.WorldToScreenPoint(new Vector3(c.X, c.Y - c.Radius - 0.12f, 0)), uiCam, out bottom);
+        var pr = parent.rect;
+        Vector2 size = tipRect.sizeDelta;
+        bool below = top.y + size.y > pr.yMax - 70;   // 上のHUDに重なるなら細胞の下へ
+        tipRect.pivot = new Vector2(0.5f, below ? 1f : 0f);
+        Vector2 at = below ? bottom : top;
+        at.x = Mathf.Clamp(at.x, pr.xMin + size.x * 0.5f + 8, pr.xMax - size.x * 0.5f - 8);
+        tipRect.anchoredPosition = at - pr.center;
     }
 
     int CellAt(Vector2 p, float extra)

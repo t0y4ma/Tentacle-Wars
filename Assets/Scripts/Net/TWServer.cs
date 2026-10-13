@@ -32,9 +32,10 @@ public class TWServer
         public string Token;           // 座っている人（切断中も残る）
         public string Name;
         public bool Com, Ready, Away, Takeover, Resigned;
+        public TW.Sim.ComProfile Profile = TW.Sim.SimpleAI.Presets[TW.Sim.SimpleAI.DefaultLevel];
         public float AwaySince;
         public bool Free { get { return Client == null && Token == null && !Com; } }
-        public void Clear() { Client = null; Token = null; Name = null; Com = Ready = Away = Takeover = Resigned = false; }
+        public void Clear() { Client = null; Token = null; Name = null; Com = Ready = Away = Takeover = Resigned = false; Profile = TW.Sim.SimpleAI.Presets[TW.Sim.SimpleAI.DefaultLevel]; }
     }
 
     class Room
@@ -363,7 +364,7 @@ public class TWServer
         var r = c.Room;
         if (m.Seat < 0 || m.Seat >= r.Seats.Length) return;
         var s = r.Seats[m.Seat];
-        if (m.Com && s.Free) { s.Com = true; s.Name = "COM"; s.Ready = true; }
+        if (m.Com && (s.Free || s.Com)) { s.Com = true; s.Name = "COM"; s.Ready = true; s.Profile = new TW.Sim.ComProfile(m.React, m.Gaze, m.Move).Clamped(); }   // COM の席なら強さの変更
         else if (!m.Com && s.Com) s.Clear();
         SendState(r);
         listDirty = true;
@@ -440,7 +441,8 @@ public class TWServer
             seats[i] = new TWSeatInfo
             {
                 Name = s.Com ? "COM" : (s.Name ?? ""), Occupied = s.Token != null, Com = s.Com, Ready = s.Ready || s.Com,
-                Connected = s.Client != null, Host = s.Client != null && s.Client == r.Host, Takeover = s.Takeover, Resigned = s.Resigned
+                Connected = s.Client != null, Host = s.Client != null && s.Client == r.Host, Takeover = s.Takeover, Resigned = s.Resigned,
+                ComReact = s.Profile.ReactTicks, ComGaze = s.Profile.GazeTicks, ComMove = s.Profile.MoveCentis
             };
         }
         var specs = new string[r.Spectators.Count];
@@ -459,15 +461,19 @@ public class TWServer
     {
         if (r.Phase == TWRoomPhase.Waiting || r.Host == null) return;
         var list = new List<int>();
+        var profiles = new List<int>();
         for (int i = 0; i < r.Seats.Length; i++)
         {
             var s = r.Seats[i];
-            if (!s.Resigned && (s.Com || s.Takeover)) list.Add(i);
+            if (s.Resigned || !(s.Com || s.Takeover)) continue;
+            list.Add(i);
+            var pf = s.Com ? s.Profile : TW.Sim.SimpleAI.Presets[TW.Sim.SimpleAI.DefaultLevel];   // 切断した人の代わりは「ふつう」
+            profiles.Add(pf.ReactTicks); profiles.Add(pf.GazeTicks); profiles.Add(pf.MoveCentis);
         }
-        string key = r.Host.Conn.connectionId + ":" + string.Join(",", list);
+        string key = r.Host.Conn.connectionId + ":" + string.Join(",", list) + "/" + string.Join(",", profiles);
         if (key == r.DutyKey) return;
         r.DutyKey = key;
-        foreach (var c in Members(r)) c.Conn.Send(new TWComDuty { Seats = c == r.Host ? list.ToArray() : new int[0] });
+        foreach (var c in Members(r)) c.Conn.Send(new TWComDuty { Seats = c == r.Host ? list.ToArray() : new int[0], Profiles = c == r.Host ? profiles.ToArray() : new int[0] });
     }
 
     // ======================================================================

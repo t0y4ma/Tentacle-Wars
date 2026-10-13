@@ -303,6 +303,13 @@ public static class TWUI
         return seg;
     }
 
+    /// <summary>子をすべて消す（foreach で回しながら Destroy すると親から外すたびに順番がずれて1つおきに残る）</summary>
+    public static void Clear(Transform parent)
+    {
+        if (parent == null) return;
+        for (int i = parent.childCount - 1; i >= 0; i--) Destroy(parent.GetChild(i).gameObject);
+    }
+
     public static void Destroy(GameObject go)
     {
         if (go == null) return;

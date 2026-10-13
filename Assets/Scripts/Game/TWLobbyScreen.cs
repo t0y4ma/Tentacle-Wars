@@ -108,8 +108,8 @@ public class TWLobbyScreen : TWScreen
     void Refresh()
     {
         if (listContent == null) return;
-        foreach (Transform c in listContent) TWUI.Destroy(c.gameObject);
-        foreach (Transform c in rejoinBox) TWUI.Destroy(c.gameObject);
+        TWUI.Clear(listContent);
+        TWUI.Clear(rejoinBox);
 
         if (TWNet.Welcomed && TWNet.Welcome.RejoinRoom > 0)
         {
@@ -198,7 +198,7 @@ public class TWLobbyScreen : TWScreen
         var mapLabel = TWUI.Label(p, "", 30, TWUI.Text, TextAnchor.MiddleLeft); TWUI.Place(mapLabel.rectTransform, 0.05f, 0.55f, 0.6f, 0.64f);
         Action showMap = () => mapLabel.text = chosen.Name + "　<color=#8FA9A6>" + chosen.Players + "人</color>";
         showMap();
-        var pick = TWUI.Button(p, "マップを選ぶ", () => TWMapPicker.Open(m => { chosen = m; showMap(); }), TWUI.Style.Normal, 26);
+        var pick = TWUI.Button(p, "マップを選ぶ", () => TWMapPicker.Open(m => { chosen = m; showMap(); }, MapJson.ToJson(chosen)), TWUI.Style.Normal, 26);
         TWUI.Place(pick.Rect, 0.63f, 0.55f, 0.95f, 0.64f);
 
         var tl = TWUI.Label(p, "制限時間", 24, TWUI.TextDim, TextAnchor.LowerLeft); TWUI.Place(tl.rectTransform, 0.05f, 0.46f, 0.5f, 0.51f);
@@ -207,7 +207,7 @@ public class TWLobbyScreen : TWScreen
         TWUI.Place((RectTransform)seg.Buttons[0].Rect.parent, 0.05f, 0.37f, 0.95f, 0.46f);
 
         bool spect = true;
-        var sl = TWUI.Label(p, "観戦", 24, TWUI.TextDim, TextAnchor.LowerLeft); TWUI.Place(sl.rectTransform, 0.05f, 0.28f, 0.5f, 0.33f);
+        var sl = TWUI.Label(p, "観戦（COMの強さは部屋で席ごとに決めます）", 24, TWUI.TextDim, TextAnchor.LowerLeft); TWUI.Place(sl.rectTransform, 0.05f, 0.28f, 0.95f, 0.33f);
         var sseg = TWUI.Segments(p, new[] { "観戦を許可する", "観戦させない" }, 0, i => spect = i == 0, 24);
         TWUI.Place((RectTransform)sseg.Buttons[0].Rect.parent, 0.05f, 0.19f, 0.95f, 0.28f);
 
@@ -227,36 +227,65 @@ public class TWLobbyScreen : TWScreen
 }
 
 /// <summary>マップを選ぶダイアログ（基本マップ＋マイマップ）</summary>
-public static class TWMapPicker
+public static /// <summary>オンラインの部屋で使うマップ選択。ステージ選択と同じ一覧（人数・基本/マイマップで絞り込み）から選ぶ</summary>
+class TWMapPicker
 {
-    public static void Open(Action<MapDef> picked)
+    /// <param name="currentJson">今のマップ（あれば最初から選んだ状態にする）</param>
+    public static void Open(Action<MapDef> picked, string currentJson = null)
     {
         GameObject h;
-        var p = TWApp.I.Modal(0.25f, 0.08f, 0.75f, 0.92f, out h);
-        var t = TWUI.Label(p, "マップを選ぶ", 36, TWUI.Text, TextAnchor.MiddleLeft);
-        TWUI.Place(t.rectTransform, 0.05f, 0.9f, 0.95f, 0.98f);
-        RectTransform content;
-        var scroll = TWUI.Scroll(p, out content, false, Vector2.zero, 8);
-        TWUI.Place((RectTransform)scroll.transform, 0.03f, 0.12f, 0.97f, 0.89f);
-        var all = new List<MapDef>(Maps.BuiltIn);
-        foreach (var m in TWMapStore.LoadAll()) if (MapValidator.Validate(m).Count == 0) all.Add(m);
-        foreach (var m in all)
+        var p = TWApp.I.Modal(0.05f, 0.06f, 0.95f, 0.94f, out h);
+        var t = TWUI.Label(p, "マップを選ぶ", 40, TWUI.Text, TextAnchor.MiddleLeft);
+        TWUI.Place(t.rectTransform, 0.025f, 0.91f, 0.6f, 0.98f);
+
+        var filters = TWUI.Rect("Filters", p); TWUI.Place(filters, 0.02f, 0.83f, 0.66f, 0.9f);
+        var list = TWUI.Rect("List", p); TWUI.Place(list, 0.02f, 0.03f, 0.66f, 0.81f);
+
+        // 右：選んだマップ
+        var side = TWUI.Rect("Side", p); TWUI.Place(side, 0.68f, 0.03f, 0.98f, 0.9f);
+        var frame = TWUI.Rect("PreviewFrame", side); TWUI.Place(frame, 0, 0.56f, 1, 1);
+        var img = new GameObject("BigPreview", typeof(RectTransform)).AddComponent<RawImage>();
+        img.transform.SetParent(frame, false);
+        TWUI.Fill(img.rectTransform);
+        var fit = img.gameObject.AddComponent<AspectRatioFitter>();
+        fit.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+        fit.aspectRatio = MapDef.FieldHalfWidth / MapDef.FieldHalfHeight;
+        var name = TWUI.Label(side, "", 40, TWUI.Text, TextAnchor.MiddleLeft);
+        TWUI.Place(name.rectTransform, 0, 0.45f, 1, 0.54f);
+        var info = TWUI.Label(side, "", 24, TWUI.TextDim, TextAnchor.UpperLeft);
+        TWUI.Place(info.rectTransform, 0, 0.3f, 1, 0.44f);
+
+        var browser = new TWMapBrowser { OnlyValid = true };
+        var ok = TWUI.Button(side, "このマップにする", () =>
         {
-            var mm = m;
-            var b = TWUI.Button(content, "", () => { TWUI.Destroy(h); picked(mm); }, TWUI.Style.Normal, 26, "Map");
-            b.Rect.gameObject.AddComponent<LayoutElement>().preferredHeight = 120;
-            TWUI.Destroy(b.Label.gameObject);
-            var img = new GameObject("Preview", typeof(RectTransform)).AddComponent<RawImage>();
-            img.transform.SetParent(b.Rect, false);
-            img.texture = TWMapStore.Preview(m, 220);
-            img.raycastTarget = false;
-            TWUI.Place(img.rectTransform, 0.01f, 0.06f, 0.01f, 0.94f);
-            img.rectTransform.offsetMax = new Vector2(176, img.rectTransform.offsetMax.y);
-            var name = TWUI.Label(b.Rect, m.Name + "　<color=#8FA9A6>" + m.Players + "人" + (m.BuiltIn ? "" : "・マイマップ") + "</color>", 30, TWUI.Text, TextAnchor.MiddleLeft);
-            TWUI.Place(name.rectTransform, 0.01f, 0, 0.98f, 1);
-            name.rectTransform.offsetMin = new Vector2(196, 0);
+            if (browser.Selected == null) return;
+            var m = browser.Selected;
+            TWUI.Destroy(h);
+            picked(m);
+        }, TWUI.Style.Primary, 32);
+        TWUI.Place(ok.Rect, 0, 0.12f, 1, 0.24f);
+        var cancel = TWUI.Button(side, "閉じる", () => TWUI.Destroy(h), TWUI.Style.Quiet, 28);
+        TWUI.Place(cancel.Rect, 0, 0, 1, 0.1f);
+
+        browser.SelectionChanged = m =>
+        {
+            ok.SetInteractable(m != null);
+            img.enabled = m != null;
+            if (m == null) { name.text = ""; info.text = "マップを選んでください"; return; }
+            img.texture = TWMapStore.Preview(m, 640);
+            name.text = m.Name;
+            int neutral = 0; foreach (var c in m.Cells) if (c.Owner < 0) neutral++;
+            info.text = m.Players + "人用　細胞 " + m.Cells.Count + "（中立 " + neutral + "）　障害物 " + m.Obstacles.Count +
+                        (string.IsNullOrEmpty(m.Author) ? "" : "\n作者 " + m.Author);
+        };
+
+        // 今のマップを選んだ状態で開く（同じ中身のマップを探す）
+        if (!string.IsNullOrEmpty(currentJson))
+        {
+            var all = new List<MapDef>(Maps.BuiltIn);
+            all.AddRange(TWMapStore.LoadAll());
+            foreach (var m in all) if (MapJson.ToJson(m) == currentJson) { browser.Focus(m); break; }
         }
-        var cancel = TWUI.Button(p, "閉じる", () => TWUI.Destroy(h), TWUI.Style.Quiet, 26);
-        TWUI.Place(cancel.Rect, 0.35f, 0.02f, 0.65f, 0.1f);
+        browser.Build(filters, list);
     }
 }

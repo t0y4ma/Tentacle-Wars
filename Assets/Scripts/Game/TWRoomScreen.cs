@@ -120,6 +120,9 @@ public class TWRoomScreen : TWScreen
         if (TWNet.Match != null && TWNet.Room.Value.Phase != (byte)TWRoomPhase.Waiting) OnGameStarted();
     }
 
+    static ComProfile ProfileOf(TWSeatInfo s) { return new ComProfile(s.ComReact, s.ComGaze, s.ComMove).Clamped(); }
+    static void SendCom(int seat, ComProfile p) { TWNet.Send(new TWSetCom { Seat = seat, Com = true, React = p.ReactTicks, Gaze = p.GazeTicks, Move = p.MoveCentis }); }
+
     void Refresh()
     {
         if (TWNet.Room == null || title == null) return;
@@ -147,11 +150,11 @@ public class TWRoomScreen : TWScreen
         timeLabel.text = "制限時間　" + (r.TimeLimitSec <= 0 ? "無制限" : (r.TimeLimitSec / 60) + "分");
         specLabel.text = r.AllowSpectators ? "観戦できます" : "観戦できません";
 
-        foreach (Transform c in hostControls) TWUI.Destroy(c.gameObject);
+        TWUI.Clear(hostControls);
         if (host)
         {
             var pick = TWUI.Button(hostControls, "マップを変える", () => TWMapPicker.Open(m =>
-                TWNet.Send(new TWRoomSettings { MapJson = MapJson.ToJson(m), TimeLimitSec = r.TimeLimitSec, AllowSpectators = r.AllowSpectators })), TWUI.Style.Normal, 26);
+                TWNet.Send(new TWRoomSettings { MapJson = MapJson.ToJson(m), TimeLimitSec = r.TimeLimitSec, AllowSpectators = r.AllowSpectators }), r.MapJson), TWUI.Style.Normal, 26);
             TWUI.Place(pick.Rect, 0, 0.72f, 1, 0.92f);
             int idx = System.Array.IndexOf(TWServer.TimeLimits, r.TimeLimitSec);
             var seg = TWUI.Segments(hostControls, new[] { "5分", "8分", "12分", "無制限" }, idx < 0 ? 1 : idx, i =>
@@ -168,7 +171,7 @@ public class TWRoomScreen : TWScreen
         }
 
         // 席
-        foreach (Transform c in seatsBox) TWUI.Destroy(c.gameObject);
+        TWUI.Clear(seatsBox);
         int n = r.Seats.Length;
         float rowH = 1f / 4f;
         for (int i = 0; i < n; i++)
@@ -180,7 +183,7 @@ public class TWRoomScreen : TWScreen
             var dot = TWUI.Dot(row.transform, TWBoardView.PlayerColors[i]);
             TWUI.Square(dot.rectTransform, 0.02f, 0.5f, 28);
             string label;
-            if (s.Com) label = "COM";
+            if (s.Com) label = "COM　<size=22><color=#F2B544>" + ProfileOf(s).Name + "</color></size>";
             else if (!s.Occupied) label = "<color=#8FA9A6>空き</color>";
             else label = s.Name + (s.Host ? "　<size=20><color=#F2B544>部屋主</color></size>" : "") + (i == r.YourSeat ? "　<size=20><color=#9BE15D>あなた</color></size>" : "");
             var lbl = TWUI.Label(row.transform, label, 28, TWUI.Text, TextAnchor.MiddleLeft);
@@ -200,14 +203,23 @@ public class TWRoomScreen : TWScreen
                 }
                 if (host)
                 {
-                    var com = TWUI.Button(row.transform, "COMを入れる", () => TWNet.Send(new TWSetCom { Seat = seat, Com = true }), TWUI.Style.Normal, 20);
+                    var com = TWUI.Button(row.transform, "COMを入れる", () => SendCom(seat, TWStageSelectScreen.LastProfile), TWUI.Style.Normal, 20);
                     TWUI.Place(com.Rect, 0.63f, 0.08f, 0.98f, 0.48f);
                 }
             }
             else if (s.Com && host)
             {
+                // 席ごとのCOMの強さ（押すとドロップダウン）
+                var rowRect = row.rectTransform;
+                var cur = ProfileOf(s);
+                var lv = TWUI.Button(row.transform, "強さ：" + cur.Name + " ▼", () => TWComMenu.Open(rowRect, cur, pf =>
+                {
+                    TWStageSelectScreen.LastProfile = pf;
+                    SendCom(seat, pf);
+                }), TWUI.Style.Normal, 20);
+                TWUI.Place(lv.Rect, 0.5f, 0.52f, 0.98f, 0.92f);
                 var rm = TWUI.Button(row.transform, "COMを外す", () => TWNet.Send(new TWSetCom { Seat = seat, Com = false }), TWUI.Style.Quiet, 20);
-                TWUI.Place(rm.Rect, 0.63f, 0.25f, 0.98f, 0.75f);
+                TWUI.Place(rm.Rect, 0.63f, 0.08f, 0.98f, 0.48f);
             }
         }
 
@@ -215,7 +227,7 @@ public class TWRoomScreen : TWScreen
         spectators.text = "観戦：" + (specs.Length == 0 ? "なし" : string.Join("、", specs));
 
         // 自分の操作
-        foreach (Transform c in myControls) TWUI.Destroy(c.gameObject);
+        TWUI.Clear(myControls);
         bool seated = r.YourSeat >= 0;
         if (seated && r.AllowSpectators)
         {

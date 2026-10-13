@@ -6,29 +6,36 @@ using UnityEngine.UI;
 
 public class TWStageSelectScreen : TWScreen
 {
-    int filterPlayers;          // 0 = すべて
-    int source;                 // 0 = 基本, 1 = マイマップ
+    readonly TWMapBrowser browser = new TWMapBrowser();
     MapDef selected;
     int localSeat;              // -1 = 観戦（全員COM）
+    ComProfile[] comProfiles;   // 席ごとのCOMの強さ
 
-    RectTransform gridContent, detail;
-    GridLayoutGroup grid;
-    float lastGridWidth;
-    readonly List<KeyValuePair<MapDef, TWUI.Btn>> cards = new List<KeyValuePair<MapDef, TWUI.Btn>>();
+    /// <summary>最後に決めたCOMの強さ（新しくCOMにした席の初期値）。次に開いたときも同じにする</summary>
+    public static ComProfile LastProfile
+    {
+        get
+        {
+            var d = SimpleAI.Presets[SimpleAI.DefaultLevel];
+            var parts = PlayerPrefs.GetString("TW.ComProfile", "").Split(',');
+            int r, g, m;
+            if (parts.Length == 3 && int.TryParse(parts[0], out r) && int.TryParse(parts[1], out g) && int.TryParse(parts[2], out m)) return new ComProfile(r, g, m).Clamped();
+            return d;
+        }
+        set { var p = value.Clamped(); PlayerPrefs.SetString("TW.ComProfile", p.ReactTicks + "," + p.GazeTicks + "," + p.MoveCentis); PlayerPrefs.Save(); }
+    }
+
+    RectTransform detail;
 
     /// <summary>エディタで保存した直後などに、そのマップを選んだ状態で開く</summary>
     public void Focus(MapDef m)
     {
-        source = m.BuiltIn ? 0 : 1;
-        filterPlayers = 0;
+        browser.Focus(m);
         selected = m;
     }
 
     protected override void OnEnter()
     {
-        cards.Clear();
-        lastGridWidth = 0;
-
         var bg = Root.gameObject.AddComponent<Image>(); bg.color = TWUI.Ink;
 
         // ---- 上部 ----
@@ -39,17 +46,7 @@ public class TWStageSelectScreen : TWScreen
 
         // ---- 左：絞り込みと一覧 ----
         var filters = TWUI.Rect("Filters", Root); TWUI.Place(filters, 0.02f, 0.83f, 0.62f, 0.9f);
-        var segP = TWUI.Segments(filters, new[] { "すべて", "2人", "3人", "4人" }, PlayersToIndex(filterPlayers),
-            i => { filterPlayers = i == 0 ? 0 : i + 1; RefreshList(); }, 26);
-        TWUI.Place((RectTransform)segP.Buttons[0].Rect.parent, 0, 0, 0.5f, 1);
-        var segS = TWUI.Segments(filters, new[] { "基本マップ", "マイマップ" }, source, i => { source = i; RefreshList(); }, 26);
-        TWUI.Place((RectTransform)segS.Buttons[0].Rect.parent, 0.53f, 0, 1, 1);
-
-        var listPanel = TWUI.Panel(Root, TWUI.Agar, true, "ListPanel");
-        TWUI.Place(listPanel.rectTransform, 0.02f, 0.11f, 0.62f, 0.81f);
-        var scroll = TWUI.Scroll(listPanel.transform, out gridContent, true, new Vector2(340, 260), 18);
-        TWUI.Fill((RectTransform)scroll.transform, 10);
-        grid = gridContent.GetComponent<GridLayoutGroup>();
+        var list = TWUI.Rect("List", Root); TWUI.Place(list, 0.02f, 0.11f, 0.62f, 0.81f);
 
         var import = TWUI.Button(Root, "JSONを読み込む", OpenImport, TWUI.Style.Normal, 28);
         TWUI.Place(import.Rect, 0.02f, 0.025f, 0.2f, 0.09f);
@@ -61,69 +58,18 @@ public class TWStageSelectScreen : TWScreen
         TWUI.Place(dp.rectTransform, 0.64f, 0.025f, 0.985f, 0.9f);
         detail = TWUI.Rect("DetailBody", dp.transform); TWUI.Fill(detail, 22);
 
-        RefreshList();
-    }
-
-    static int PlayersToIndex(int p) { return p == 0 ? 0 : p - 1; }
-
-    List<MapDef> Listed()
-    {
-        var src = source == 0 ? Maps.BuiltIn : TWMapStore.LoadAll();
-        var r = new List<MapDef>();
-        foreach (var m in src) if (filterPlayers == 0 || m.Players == filterPlayers) r.Add(m);
-        return r;
-    }
-
-    void RefreshList()
-    {
-        foreach (Transform c in gridContent) TWUI.Destroy(c.gameObject);
-        cards.Clear();
-        var maps = Listed();
-        MapDef keep = null;
-        foreach (var m in maps)
+        browser.SelectionChanged = m =>
         {
-            if (selected != null && m.Id == selected.Id) keep = m;
-            var mm = m;
-            var b = TWUI.Button(gridContent, "", () => Select(mm), TWUI.Style.Normal, 24, "Card");
-            TWUI.Destroy(b.Label.gameObject);
-            var img = new GameObject("Preview", typeof(RectTransform)).AddComponent<RawImage>();
-            img.transform.SetParent(b.Rect, false);
-            img.texture = TWMapStore.Preview(m);
-            img.raycastTarget = false;
-            TWUI.Place(img.rectTransform, 0.04f, 0.27f, 0.96f, 0.95f);
-            var name = TWUI.Label(b.Rect, m.Name, 28, TWUI.Text, TextAnchor.MiddleLeft, "Name");
-            TWUI.Place(name.rectTransform, 0.05f, 0.02f, 0.62f, 0.25f);
-            var info = TWUI.Label(b.Rect, m.Players + "人・細胞" + m.Cells.Count, 22, TWUI.TextDim, TextAnchor.MiddleRight, "Info");
-            TWUI.Place(info.rectTransform, 0.63f, 0.02f, 0.95f, 0.25f);
-            b.Label = name;   // 選択時の配色に合わせて名前の色を変える
-            cards.Add(new KeyValuePair<MapDef, TWUI.Btn>(m, b));
-        }
-        if (maps.Count == 0)
-        {
-            var empty = TWUI.Label(gridContent, source == 1 ? "マイマップはまだありません。\nエディタで作るか、JSONを読み込んでください。" : "該当するマップがありません。",
-                28, TWUI.TextDim, TextAnchor.MiddleCenter, "Empty");
-            empty.rectTransform.sizeDelta = new Vector2(700, 200);
-        }
-        Select(keep ?? (maps.Count > 0 ? maps[0] : null));
-        lastGridWidth = 0;   // カードの大きさを測り直す
-    }
-
-    void Select(MapDef m)
-    {
-        if (m == null || selected == null || selected.Id != m.Id || selected.Players != m.Players) localSeat = 0;
-        selected = m;
-        foreach (var kv in cards)
-        {
-            kv.Value.SetSelected(m != null && kv.Key.Id == m.Id);
-            // 縮小画像を見せるため、選択中でも背景は控えめに
-            if (m != null && kv.Key.Id == m.Id) kv.Value.Back.color = new Color(TWUI.Amber.r, TWUI.Amber.g, TWUI.Amber.b, 0.85f);
-        }
-        RefreshDetail();
+            if (m == null || selected == null || selected.Id != m.Id || selected.Players != m.Players) localSeat = 0;
+            selected = m;
+            RefreshDetail();
+        };
+        browser.Build(filters, list);
     }
 
     void RefreshDetail()
     {
-        foreach (Transform c in detail) TWUI.Destroy(c.gameObject);
+        TWUI.Clear(detail);
         if (selected == null)
         {
             var none = TWUI.Label(detail, "マップを選んでください", 30, TWUI.TextDim, TextAnchor.MiddleCenter);
@@ -131,6 +77,7 @@ public class TWStageSelectScreen : TWScreen
             return;
         }
         var m = selected;
+        if (comProfiles == null) { comProfiles = new ComProfile[4]; for (int k = 0; k < comProfiles.Length; k++) comProfiles[k] = LastProfile; }
 
         // AspectRatioFitter は親いっぱいに広がるので、上部の枠の中に入れる
         var frame = TWUI.Rect("PreviewFrame", detail); TWUI.Place(frame, 0, 0.66f, 1, 1);
@@ -161,22 +108,33 @@ public class TWStageSelectScreen : TWScreen
             TWUI.Place(dot.rectTransform, 0, 0.15f, 0.06f, 0.85f);
             dot.gameObject.AddComponent<AspectRatioFitter>().aspectMode = AspectRatioFitter.AspectMode.HeightControlsWidth;
             var lbl = TWUI.Label(row, "P" + (p + 1) + "　" + TWBoardView.PlayerColorNames[p], 28, TWUI.Text, TextAnchor.MiddleLeft);
-            TWUI.Place(lbl.rectTransform, 0.08f, 0, 0.4f, 1);
-            var seg = TWUI.Segments(row, new[] { "あなた", "COM" }, localSeat == p ? 0 : 1, i =>
+            TWUI.Place(lbl.rectTransform, 0.08f, 0, 0.29f, 1);
+            // あなた／COM。COMの席でもう一度COMを押すと強さの設定が開く
+            bool wasCom = localSeat != p;
+            TWUI.Segmented seg = null;
+            seg = TWUI.Segments(row, new[] { "あなた", "COM：" + comProfiles[p].Name + " ▼" }, localSeat == p ? 0 : 1, i =>
             {
-                localSeat = i == 0 ? seat : (localSeat == seat ? -1 : localSeat);
-                RefreshDetail();
-            }, 24);
-            TWUI.Place((RectTransform)seg.Buttons[0].Rect.parent, 0.42f, 0.05f, 1, 0.95f);
+                if (i == 0) { localSeat = seat; RefreshDetail(); return; }
+                if (!wasCom) { localSeat = -1; RefreshDetail(); return; }
+                var comBtn = seg.Buttons[1];
+                TWComMenu.Open(row, comProfiles[seat], pf =>
+                {
+                    comProfiles[seat] = pf;
+                    LastProfile = pf;
+                    comBtn.Label.text = "COM：" + pf.Name + " ▼";
+                });
+            }, 22);
+            TWUI.Place((RectTransform)seg.Buttons[0].Rect.parent, 0.3f, 0.05f, 1, 0.95f);
+            ((RectTransform)seg.Buttons[0].Rect.parent).GetComponent<HorizontalLayoutGroup>().childForceExpandWidth = true;
         }
-        var watch = TWUI.Label(detail, localSeat < 0 ? "全員COM：観戦します" : "", 22, TWUI.Amber, TextAnchor.MiddleLeft);
-        TWUI.Place(watch.rectTransform, 0, seatTop - 4 * (rowH + gap) - 0.04f, 1, seatTop - 4 * (rowH + gap));
+        var watch = TWUI.Label(detail, localSeat < 0 ? "全員COM：観戦します" : "", 22, TWUI.Amber, TextAnchor.MiddleRight);
+        TWUI.Place(watch.rectTransform, 0.3f, 0.5f, 1, 0.54f);
 
         // 操作
         var errs = MapValidator.Validate(m);
         var start = TWUI.Button(detail, errs.Count == 0 ? (localSeat < 0 ? "観戦を始める" : "対戦開始") : "このマップには問題があります",
             () => StartGame(), TWUI.Style.Primary, 36);
-        TWUI.Place(start.Rect, 0, 0.1f, 1, 0.2f);
+        TWUI.Place(start.Rect, 0, 0.095f, 1, 0.19f);
         start.SetInteractable(errs.Count == 0);
 
         if (m.BuiltIn)
@@ -196,7 +154,7 @@ public class TWStageSelectScreen : TWScreen
             {
                 TWMapStore.Delete(m.Id);
                 selected = null;
-                RefreshList();
+                browser.Refresh();
                 App.Toast("削除しました");
             }, true), TWUI.Style.Danger, 26);
             TWUI.Place(del.Rect, 0.68f, 0, 1, 0.08f);
@@ -207,7 +165,7 @@ public class TWStageSelectScreen : TWScreen
     {
         if (selected == null) return;
         var map = selected;
-        App.Game.Launch(map, localSeat, () => { Focus(map); App.Show(App.StageSelect); });
+        App.Game.Launch(map, localSeat, () => { Focus(map); App.Show(App.StageSelect); }, "ステージ選択へ", (ComProfile[])comProfiles.Clone());
         App.Show(App.Game);
     }
 
@@ -262,21 +220,5 @@ public class TWStageSelectScreen : TWScreen
         TWUI.Place(cancel.Rect, 0.58f, 0.03f, 0.72f, 0.12f);
         var ok = TWUI.Button(p, "読み込む", () => tryImport(input.text), TWUI.Style.Primary, 30);
         TWUI.Place(ok.Rect, 0.74f, 0.03f, 0.96f, 0.12f);
-    }
-
-    public override void Tick()
-    {
-        // カードの大きさは一覧の実際の幅から決める（3列。狭ければ2列）
-        if (grid == null) return;
-        float w = ((RectTransform)grid.transform).rect.width;
-        if (w < 50 || Mathf.Abs(w - lastGridWidth) < 2) return;
-        lastGridWidth = w;
-        int cols = w > 900 ? 3 : 2;
-        float cw = (w - grid.padding.left - grid.padding.right - grid.spacing.x * (cols - 1)) / cols;
-        float pvH = cw * 0.92f * MapDef.FieldHalfHeight / MapDef.FieldHalfWidth;
-        grid.cellSize = new Vector2(Mathf.Floor(cw), Mathf.Floor(pvH / 0.68f));
-        grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-        grid.constraintCount = cols;
-        LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)grid.transform);
     }
 }

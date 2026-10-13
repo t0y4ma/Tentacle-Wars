@@ -234,7 +234,7 @@ public static class TWNet
         }, false);
         NetworkClient.ReplaceHandler<TWTickBundle>(m => { if (Match != null) Match.OnBundle(m); }, false);
         NetworkClient.ReplaceHandler<TWSnapshot>(m => { if (Match != null) Match.OnSnapshot(m.State); }, false);
-        NetworkClient.ReplaceHandler<TWComDuty>(m => { if (Match != null) Match.SetDuty(m.Seats); }, false);
+        NetworkClient.ReplaceHandler<TWComDuty>(m => { if (Match != null) Match.SetDuty(m.Seats, m.Profiles); }, false);
         NetworkClient.ReplaceHandler<TWGameOver>(m =>
         {
             LastGameOver = m;
@@ -322,17 +322,19 @@ public class TWOnlineMatch
     public void OnGameOver(TWGameOver m) { Finished = true; Winner = m.Winner; }
 
     /// <summary>部屋主として代打ちする席</summary>
-    public void SetDuty(int[] seats)
+    public void SetDuty(int[] seats, int[] profiles)
     {
-        var keep = new HashSet<int>(seats ?? new int[0]);
+        seats = seats ?? new int[0];
+        var keep = new HashSet<int>(seats);
         var remove = new List<int>();
         foreach (var k in duty.Keys) if (!keep.Contains(k)) remove.Add(k);
         foreach (var k in remove) duty.Remove(k);
-        foreach (var s in keep)
+        for (int i = 0; i < seats.Length; i++)
         {
-            if (duty.ContainsKey(s)) continue;
-            int seat = s;
-            var ai = new SimpleAI(seat, UnityEngine.Random.Range(1, 99999));
+            int seat = seats[i];
+            var pf = profiles != null && i * 3 + 2 < profiles.Length ? new ComProfile(profiles[i * 3], profiles[i * 3 + 1], profiles[i * 3 + 2]) : SimpleAI.Presets[SimpleAI.DefaultLevel];
+            if (duty.ContainsKey(seat)) { duty[seat].SetProfile(pf); continue; }
+            var ai = new SimpleAI(seat, UnityEngine.Random.Range(1, 99999)).SetProfile(pf);
             ai.Emit = c => TWNet.SendCmd(c, seat);
             duty[seat] = ai;
         }
