@@ -1,0 +1,3 @@
+# 接続先（WebGL 版）。エディタでは常に localhost:7790 につなぐ
+url=wss://nine.freeddns.org/tentacle
+port=7790

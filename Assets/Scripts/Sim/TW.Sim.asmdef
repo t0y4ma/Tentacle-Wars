@@ -1,0 +1,7 @@
+{
+  "name": "TW.Sim",
+  "rootNamespace": "TW.Sim",
+  "references": [],
+  "autoReferenced": true,
+  "noEngineReferences": true
+}

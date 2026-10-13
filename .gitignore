@@ -15,7 +15,8 @@
 /[Tt]emp/
 /[Oo]bj/
 /[Bb]uild/
-/[Bb]uilds/
+/[Bb]uilds/*
+!/[Bb]uilds/WebGL/
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
 *.log
@@ -105,3 +106,9 @@ InitTestScene*.unity*
 
 # Auto-generated scenes by play mode tests
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
+
+# ---- Tentacle Wars 固有 ----
+# ビルドは WebGL だけ追跡する。サーバー本体と zip は含めない（上の /Builds/* の例外）
+# UnityMCP のスクリーンショット（確認用）
+/[Aa]ssets/[Ss]creenshots/
+/[Aa]ssets/[Ss]creenshots.meta

@@ -1,0 +1,18 @@
+{
+  "jobs": [
+    { "enabled": true, "name": "Linux Server", "target": 24, "subtarget": 1, "outputDirectory": "Builds/LinuxServer", "executableName": "TentacleWarsServer",
+      "cleanOutputDirectory": true, "developmentBuild": false, "createZip": true, "zipPath": "Builds/TentacleWarsServer.zip",
+      "zipExcludes": ["TentacleWarsServer_BackUpThisFolder_ButDontShipItWithYourGame", "Tentacle Wars_BurstDebugInformation_DoNotShip"] },
+    { "enabled": true, "name": "WebGL", "target": 20, "subtarget": 0, "outputDirectory": "Builds/WebGL", "executableName": "Game",
+      "cleanOutputDirectory": true, "developmentBuild": false, "createZip": false, "zipPath": "", "zipExcludes": [] }
+  ],
+  "useBuildSettingsScenes": true,
+  "scenes": [],
+  "switchTargetWhenDone": true,
+  "finalActiveTarget": 20,
+  "gitCommitAndPush": true,
+  "gitAddPaths": [".gitignore", "Assets", "Builds/WebGL", "Packages", "ProjectSettings"],
+  "gitCommitMessage": "オンライン対戦・ステージ選択・マップエディタ（{date}）",
+  "gitRemote": "origin",
+  "showDialogs": false
+}
