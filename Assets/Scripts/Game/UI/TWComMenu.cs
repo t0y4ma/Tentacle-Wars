@@ -1,4 +1,4 @@
-// COMの強さのドロップダウン。プリセット（よわい・ふつう・つよい）と、3つの時間を細かく決められる
+﻿// COMの強さのドロップダウン。考え方（標準・学習）と、プリセット（よわい・ふつう・つよい）、3つの時間を細かく決められる
 using System;
 using TW.Sim;
 using UnityEngine;
@@ -38,7 +38,7 @@ public static class TWComMenu
         var panel = TWUI.Panel(holder, TWUI.Agar, true, "Panel");
         var pr = panel.rectTransform;
         pr.anchorMin = pr.anchorMax = new Vector2(0.5f, 0.5f);
-        Vector2 size = new Vector2(620, 400);
+        Vector2 size = new Vector2(620, 480);
         pr.sizeDelta = size;
         // ボタンが押されても幕に届かないよう、パネル自身もクリックを受ける
         panel.raycastTarget = true;
@@ -56,9 +56,9 @@ public static class TWComMenu
 
         var p = current.Clamped();
         var title = TWUI.Label(pr, "COMの強さ", 28, TWUI.Text, TextAnchor.MiddleLeft);
-        TWUI.Place(title.rectTransform, 0.05f, 0.85f, 0.6f, 0.97f);
+        TWUI.Place(title.rectTransform, 0.05f, 0.88f, 0.6f, 0.98f);
 
-        TWUI.Segmented presets = null;
+        TWUI.Segmented presets = null, brains = null;
         Text reactV = null, gazeV = null, moveV = null;
         Action refresh = () =>
         {
@@ -67,18 +67,26 @@ public static class TWComMenu
             moveV.text = Sec(p.MoveCentis);
             int idx = p.PresetIndex();
             presets.Select(idx, false);
+            brains.Select(p.Brain, false);
         };
         Action apply = () => { p = p.Clamped(); refresh(); if (changed != null) changed(p); };
 
         presets = TWUI.Segments(pr, SimpleAI.LevelNames, p.PresetIndex(), i => { p = SimpleAI.Presets[i]; apply(); }, 24);
-        TWUI.Place((RectTransform)presets.Buttons[0].Rect.parent, 0.05f, 0.68f, 0.95f, 0.82f);
+        TWUI.Place((RectTransform)presets.Buttons[0].Rect.parent, 0.05f, 0.60f, 0.95f, 0.72f);
 
-        reactV = Row(pr, 0.5f, "次の手までの時間", () => { p.ReactTicks -= 1; apply(); }, () => { p.ReactTicks += 1; apply(); });
-        gazeV = Row(pr, 0.34f, "目移りの時間", () => { p.GazeTicks -= 1; apply(); }, () => { p.GazeTicks += 1; apply(); });
-        moveV = Row(pr, 0.18f, "触手をつなぐ時間（距離1あたり）", () => { p.MoveCentis -= 1; apply(); }, () => { p.MoveCentis += 1; apply(); });
+        // 考え方：標準（手作りのルール）／学習（強化学習で鍛えたCOM）
+        var brainLbl = TWUI.Label(pr, "考え方", 22, TWUI.TextDim, TextAnchor.MiddleLeft);
+        TWUI.Place(brainLbl.rectTransform, 0.05f, 0.75f, 0.3f, 0.86f);
+        var brainNames = new[] { ComProfile.BrainNames[0], ComProfile.BrainNames[1] + (TWLearnedCom.Available ? "" : "（なし）") };
+        brains = TWUI.Segments(pr, brainNames, p.Brain, i => { p.Brain = i; apply(); }, 22);
+        TWUI.Place((RectTransform)brains.Buttons[0].Rect.parent, 0.3f, 0.75f, 0.95f, 0.86f);
+
+        reactV = Row(pr, 0.43f, "次の手までの時間", () => { p.ReactTicks -= 1; apply(); }, () => { p.ReactTicks += 1; apply(); });
+        gazeV = Row(pr, 0.29f, "目移りの時間", () => { p.GazeTicks -= 1; apply(); }, () => { p.GazeTicks += 1; apply(); });
+        moveV = Row(pr, 0.15f, "触手をつなぐ時間（距離1あたり）", () => { p.MoveCentis -= 1; apply(); }, () => { p.MoveCentis += 1; apply(); });
 
         var ok = TWUI.Button(pr, "閉じる", () => close(), TWUI.Style.Quiet, 24);
-        TWUI.Place(ok.Rect, 0.7f, 0.02f, 0.95f, 0.14f);
+        TWUI.Place(ok.Rect, 0.7f, 0.02f, 0.95f, 0.12f);
         refresh();
     }
 

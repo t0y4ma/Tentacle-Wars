@@ -216,6 +216,7 @@ public static class TWUI
     {
         var bg = Panel(parent, Ink, true, "Input");
         var field = bg.gameObject.AddComponent<InputField>();
+        bg.gameObject.AddComponent<TWWebInput>();   // ブラウザでは HTML の入力欄で入力する
         var text = Label(bg.transform, "", size, Text, multiline ? TextAnchor.UpperLeft : TextAnchor.MiddleLeft, "Text");
         text.resizeTextForBestFit = false;
         text.supportRichText = false;

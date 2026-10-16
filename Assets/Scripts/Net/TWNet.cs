@@ -1,4 +1,4 @@
-// 通信の入口。NetworkManager（SimpleWebTransport）を用意し、サーバー／クライアントの受け口を登録する
+﻿// 通信の入口。NetworkManager（SimpleWebTransport）を用意し、サーバー／クライアントの受け口を登録する
 using System;
 using System.Collections.Generic;
 using Mirror;
@@ -269,7 +269,7 @@ public class TWOnlineMatch
 
     readonly Dictionary<int, List<TWCmdEntry>> cmds = new Dictionary<int, List<TWCmdEntry>>();
     readonly Dictionary<int, uint> hashes = new Dictionary<int, uint>();
-    readonly Dictionary<int, SimpleAI> duty = new Dictionary<int, SimpleAI>();
+    readonly Dictionary<int, IComPlayer> duty = new Dictionary<int, IComPlayer>();
     float acc;
 
     public TWOnlineMatch(MapDef map, TWGameStart start)
@@ -332,9 +332,9 @@ public class TWOnlineMatch
         for (int i = 0; i < seats.Length; i++)
         {
             int seat = seats[i];
-            var pf = profiles != null && i * 3 + 2 < profiles.Length ? new ComProfile(profiles[i * 3], profiles[i * 3 + 1], profiles[i * 3 + 2]) : SimpleAI.Presets[SimpleAI.DefaultLevel];
-            if (duty.ContainsKey(seat)) { duty[seat].SetProfile(pf); continue; }
-            var ai = new SimpleAI(seat, UnityEngine.Random.Range(1, 99999)).SetProfile(pf);
+            var pf = (profiles != null && i * 4 + 3 < profiles.Length ? new ComProfile(profiles[i * 4], profiles[i * 4 + 1], profiles[i * 4 + 2], profiles[i * 4 + 3]) : SimpleAI.Presets[SimpleAI.DefaultLevel]).Clamped();
+            if (duty.ContainsKey(seat) && duty[seat].Profile.Brain == pf.Brain) { duty[seat].ApplyProfile(pf); continue; }   // 考え方が変わったら作り直す
+            var ai = TWLearnedCom.Create(seat, pf);
             ai.Emit = c => TWNet.SendCmd(c, seat);
             duty[seat] = ai;
         }

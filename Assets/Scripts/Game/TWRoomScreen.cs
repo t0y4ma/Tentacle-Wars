@@ -1,4 +1,4 @@
-// オンラインの部屋（待機中）：席・マップ・設定・チャット。部屋主が開始する
+﻿// オンラインの部屋（待機中）：席・マップ・設定・チャット。部屋主が開始する
 using System.Collections.Generic;
 using TW.Sim;
 using UnityEngine;
@@ -70,8 +70,9 @@ public class TWRoomScreen : TWScreen
         chatInput.characterLimit = TWProtocol.MaxChatLength;
         chatInput.onEndEdit.AddListener(s =>
         {
-            if (UnityEngine.InputSystem.Keyboard.current != null &&
-                (UnityEngine.InputSystem.Keyboard.current.enterKey.wasPressedThisFrame || UnityEngine.InputSystem.Keyboard.current.numpadEnterKey.wasPressedThisFrame)) SendChat();
+            bool enter = UnityEngine.InputSystem.Keyboard.current != null &&
+                (UnityEngine.InputSystem.Keyboard.current.enterKey.wasPressedThisFrame || UnityEngine.InputSystem.Keyboard.current.numpadEnterKey.wasPressedThisFrame);
+            if (enter || TWWebInput.SubmittedThisFrame) SendChat();   // ブラウザ版は HTML の入力欄での Enter
         });
         var send = TWUI.Button(rp, "送信", SendChat, TWUI.Style.Normal, 24);
         TWUI.Place(send.Rect, 0.76f, 0, 1, 0.1f);
@@ -120,8 +121,8 @@ public class TWRoomScreen : TWScreen
         if (TWNet.Match != null && TWNet.Room.Value.Phase != (byte)TWRoomPhase.Waiting) OnGameStarted();
     }
 
-    static ComProfile ProfileOf(TWSeatInfo s) { return new ComProfile(s.ComReact, s.ComGaze, s.ComMove).Clamped(); }
-    static void SendCom(int seat, ComProfile p) { TWNet.Send(new TWSetCom { Seat = seat, Com = true, React = p.ReactTicks, Gaze = p.GazeTicks, Move = p.MoveCentis }); }
+    static ComProfile ProfileOf(TWSeatInfo s) { return new ComProfile(s.ComReact, s.ComGaze, s.ComMove, s.ComBrain).Clamped(); }
+    static void SendCom(int seat, ComProfile p) { TWNet.Send(new TWSetCom { Seat = seat, Com = true, React = p.ReactTicks, Gaze = p.GazeTicks, Move = p.MoveCentis, Brain = p.Brain }); }
 
     void Refresh()
     {

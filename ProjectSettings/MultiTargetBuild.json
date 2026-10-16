@@ -12,7 +12,7 @@
   "finalActiveTarget": 20,
   "gitCommitAndPush": true,
   "gitAddPaths": [".gitignore", "Assets", "Builds/WebGL", "Packages", "ProjectSettings"],
-  "gitCommitMessage": "オンライン対戦・ステージ選択・マップエディタ（{date}）",
+  "gitCommitMessage": "強化学習で鍛えた学習COMを追加（{date}）",
   "gitRemote": "origin",
   "showDialogs": false
 }

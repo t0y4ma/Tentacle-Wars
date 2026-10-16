@@ -1,4 +1,4 @@
-// 対戦画面。ローカル（あなた＋COM／観戦）とオンライン（サーバーが確定した操作で進める）の両方を扱う
+﻿// 対戦画面。ローカル（あなた＋COM／観戦）とオンライン（サーバーが確定した操作で進める）の両方を扱う
 using System;
 using System.Collections.Generic;
 using TW.Sim;
@@ -17,7 +17,7 @@ public class TWGameScreen : TWScreen
     ComProfile[] comProfiles;    // 席ごとのCOMの強さ（null ならふつう）
 
     Simulation sim;
-    readonly List<SimpleAI> ais = new List<SimpleAI>();
+    readonly List<IComPlayer> ais = new List<IComPlayer>();
     TWBoardView board;
     float acc, speed = 1f, interp;
     bool paused, resultShown;
@@ -98,7 +98,7 @@ public class TWGameScreen : TWScreen
         {
             sim = new Simulation(map);
             for (int p = 0; p < sim.PlayerCount; p++)
-                if (p != localPlayer) ais.Add(new SimpleAI(p, UnityEngine.Random.Range(1, 99999)).SetProfile(comProfiles != null && p < comProfiles.Length ? comProfiles[p] : SimpleAI.Presets[SimpleAI.DefaultLevel]));
+                if (p != localPlayer) ais.Add(TWLearnedCom.Create(p, comProfiles != null && p < comProfiles.Length ? comProfiles[p] : SimpleAI.Presets[SimpleAI.DefaultLevel]));
         }
         board.Build(sim);
         acc = 0; paused = false; resultShown = false; drag = DragMode.None;

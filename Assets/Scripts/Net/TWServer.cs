@@ -1,4 +1,4 @@
-// サーバー側：ロビー・部屋・試合の進行。試合はサーバーが正本を持ち、操作だけを全員へ配る
+﻿// サーバー側：ロビー・部屋・試合の進行。試合はサーバーが正本を持ち、操作だけを全員へ配る
 using System.Collections.Generic;
 using Mirror;
 using TW.Sim;
@@ -364,7 +364,7 @@ public class TWServer
         var r = c.Room;
         if (m.Seat < 0 || m.Seat >= r.Seats.Length) return;
         var s = r.Seats[m.Seat];
-        if (m.Com && (s.Free || s.Com)) { s.Com = true; s.Name = "COM"; s.Ready = true; s.Profile = new TW.Sim.ComProfile(m.React, m.Gaze, m.Move).Clamped(); }   // COM の席なら強さの変更
+        if (m.Com && (s.Free || s.Com)) { s.Com = true; s.Name = "COM"; s.Ready = true; s.Profile = new TW.Sim.ComProfile(m.React, m.Gaze, m.Move, m.Brain).Clamped(); }   // COM の席なら強さの変更
         else if (!m.Com && s.Com) s.Clear();
         SendState(r);
         listDirty = true;
@@ -442,7 +442,7 @@ public class TWServer
             {
                 Name = s.Com ? "COM" : (s.Name ?? ""), Occupied = s.Token != null, Com = s.Com, Ready = s.Ready || s.Com,
                 Connected = s.Client != null, Host = s.Client != null && s.Client == r.Host, Takeover = s.Takeover, Resigned = s.Resigned,
-                ComReact = s.Profile.ReactTicks, ComGaze = s.Profile.GazeTicks, ComMove = s.Profile.MoveCentis
+                ComReact = s.Profile.ReactTicks, ComGaze = s.Profile.GazeTicks, ComMove = s.Profile.MoveCentis, ComBrain = s.Profile.Brain
             };
         }
         var specs = new string[r.Spectators.Count];
@@ -468,7 +468,7 @@ public class TWServer
             if (s.Resigned || !(s.Com || s.Takeover)) continue;
             list.Add(i);
             var pf = s.Com ? s.Profile : TW.Sim.SimpleAI.Presets[TW.Sim.SimpleAI.DefaultLevel];   // 切断した人の代わりは「ふつう」
-            profiles.Add(pf.ReactTicks); profiles.Add(pf.GazeTicks); profiles.Add(pf.MoveCentis);
+            profiles.Add(pf.ReactTicks); profiles.Add(pf.GazeTicks); profiles.Add(pf.MoveCentis); profiles.Add(pf.Brain);
         }
         string key = r.Host.Conn.connectionId + ":" + string.Join(",", list) + "/" + string.Join(",", profiles);
         if (key == r.DutyKey) return;
@@ -544,19 +544,25 @@ public class TWServer
         if (r.Phase == TWRoomPhase.Countdown && Time.unscaledTime >= r.CountdownUntil) { r.Phase = TWRoomPhase.Playing; r.Acc = 0; SendState(r); }
         if (r.Phase != TWRoomPhase.Playing) return;
 
-        // 切断した人：猶予が過ぎたら COM が代打ち。誰も戻らなければ部屋を閉じる
-        bool anyConnectedHuman = false, changed = false;
+        // 切断した人：猶予が過ぎたら COM が代打ち
+        bool hadHuman = false, humanLeft = false, changed = false;
         foreach (var s in r.Seats)
         {
-            if (s.Client != null) anyConnectedHuman = true;
             if (s.Away && !s.Takeover && !s.Resigned && Time.unscaledTime - s.AwaySince >= AwayGraceSeconds) { s.Takeover = true; changed = true; }
+            if (s.Com) continue;   // 最初から COM の席は数えない
+            hadHuman = true;
+            // つながっている、または切断してもまだ猶予中なら、その人はまだいる
+            if (s.Client != null || (s.Away && !s.Takeover && !s.Resigned)) humanLeft = true;
         }
         if (changed) { SendState(r); UpdateDuty(r); }
-        if (!anyConnectedHuman)
+        // プレイヤーだった席がすべて代打ち（または降参して退出）になったら終わる
+        if (hadHuman && !humanLeft) { DeleteRoom(r, "プレイヤーが全員いなくなったため、試合を終了しました"); return; }
+        // 全員 COM の試合は、部屋に誰もいなくなったら終わる（代打ちを動かす部屋主もいないため）
+        if (!hadHuman)
         {
-            bool allExpired = true;
-            foreach (var s in r.Seats) if (s.Away && !s.Resigned && Time.unscaledTime - s.AwaySince < AwayGraceSeconds) allExpired = false;
-            if (allExpired) { DeleteRoom(r, "プレイヤーが全員いなくなったため、試合を終了しました"); return; }
+            bool anyMember = false;
+            foreach (var c in Members(r)) { anyMember = true; break; }
+            if (!anyMember) { DeleteRoom(r, "部屋に誰もいなくなったため、試合を終了しました"); return; }
         }
 
         float step = 1f / Balance.TicksPerSecond;

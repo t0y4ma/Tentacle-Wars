@@ -8,9 +8,31 @@ using System.Collections.Generic;
 
 namespace TW.Sim
 {
-    public class SimpleAI
+    /// <summary>COM（標準・学習）に共通の操作</summary>
+    public interface IComPlayer
     {
-        public readonly int Player;
+        int Player { get; }
+        ComProfile Profile { get; }
+        Action<Command> Emit { get; set; }
+        void ApplyProfile(ComProfile p);
+        void Think(Simulation sim);
+    }
+
+    /// <summary>強さの設定から COM を作る（学習COMの重みが無ければ標準のCOM）</summary>
+    public static class ComFactory
+    {
+        public static IComPlayer Create(int player, ComProfile p, int seed)
+        {
+            p = p.Clamped();
+            if (p.Brain == ComProfile.BrainLearned && LearnedAI.SharedNet != null)
+                return new LearnedAI(player, LearnedAI.SharedNet, seed).SetProfile(p);
+            return new SimpleAI(player, seed).SetProfile(p);
+        }
+    }
+
+    public class SimpleAI : IComPlayer
+    {
+        public int Player { get; private set; }
         readonly Random rng;
 
         // ---- 強さ ----
@@ -30,6 +52,7 @@ namespace TW.Sim
 
         public SimpleAI SetLevel(int level) { return SetProfile(Presets[ClampLevel(level)]); }
         public SimpleAI SetProfile(ComProfile p) { profile = p.Clamped(); return this; }
+        public void ApplyProfile(ComProfile p) { SetProfile(p); }
 
         int react { get { return profile.ReactTicks; } }
         int gaze { get { return profile.GazeTicks; } }
@@ -37,7 +60,7 @@ namespace TW.Sim
         int swipe { get { return 3 + profile.GazeTicks / 2; } }
 
         /// <summary>設定すると、操作を sim に直接積まずにここへ渡す（オンラインで部屋主が代打ちするとき）</summary>
-        public Action<Command> Emit;
+        public Action<Command> Emit { get; set; }
 
         // 実行待ちの操作（手が動いている最中）
         bool hasPending;
@@ -241,12 +264,18 @@ namespace TW.Sim
         /// <summary>触手をつなぐ時間（カーソルを盤面の距離1だけ動かす時間。1/100秒）</summary>
         public int MoveCentis;
 
-        public const int ReactMin = 2, ReactMax = 100, GazeMin = 0, GazeMax = 40, MoveMin = 1, MoveMax = 50;
+        /// <summary>考え方（0 = 標準のCOM、1 = 強化学習で鍛えたCOM）</summary>
+        public int Brain;
 
-        public ComProfile(int react, int gaze, int moveCentis) { ReactTicks = react; GazeTicks = gaze; MoveCentis = moveCentis; }
+        public const int ReactMin = 2, ReactMax = 100, GazeMin = 0, GazeMax = 40, MoveMin = 1, MoveMax = 50;
+        public const int BrainStandard = 0, BrainLearned = 1;
+        public static readonly string[] BrainNames = { "標準", "学習" };
+
+        public ComProfile(int react, int gaze, int moveCentis, int brain = BrainStandard) { ReactTicks = react; GazeTicks = gaze; MoveCentis = moveCentis; Brain = brain; }
 
         static int Clamp(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
-        public ComProfile Clamped() { return new ComProfile(Clamp(ReactTicks, ReactMin, ReactMax), Clamp(GazeTicks, GazeMin, GazeMax), Clamp(MoveCentis, MoveMin, MoveMax)); }
+        public ComProfile Clamped() { return new ComProfile(Clamp(ReactTicks, ReactMin, ReactMax), Clamp(GazeTicks, GazeMin, GazeMax), Clamp(MoveCentis, MoveMin, MoveMax), Clamp(Brain, BrainStandard, BrainLearned)); }
+        public ComProfile WithBrain(int brain) { var p = this; p.Brain = brain; return p.Clamped(); }
 
         /// <summary>プリセットと同じならその番号、違えば -1（カスタム）</summary>
         public int PresetIndex()
@@ -259,6 +288,6 @@ namespace TW.Sim
             return -1;
         }
 
-        public string Name { get { int i = PresetIndex(); return i >= 0 ? SimpleAI.LevelNames[i] : "カスタム"; } }
+        public string Name { get { int i = PresetIndex(); return (Brain == BrainLearned ? "学習・" : "") + (i >= 0 ? SimpleAI.LevelNames[i] : "カスタム"); } }
     }
 }

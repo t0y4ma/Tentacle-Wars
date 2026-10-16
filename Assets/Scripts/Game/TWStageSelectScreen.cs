@@ -1,4 +1,4 @@
-// ステージ選択。基本マップ／マイマップを人数で絞り込み、席（あなた・COM）を決めて対戦を始める
+﻿// ステージ選択。基本マップ／マイマップを人数で絞り込み、席（あなた・COM）を決めて対戦を始める
 using System.Collections.Generic;
 using TW.Sim;
 using UnityEngine;
@@ -19,10 +19,11 @@ public class TWStageSelectScreen : TWScreen
             var d = SimpleAI.Presets[SimpleAI.DefaultLevel];
             var parts = PlayerPrefs.GetString("TW.ComProfile", "").Split(',');
             int r, g, m;
-            if (parts.Length == 3 && int.TryParse(parts[0], out r) && int.TryParse(parts[1], out g) && int.TryParse(parts[2], out m)) return new ComProfile(r, g, m).Clamped();
+            int b = 0;
+            if (parts.Length >= 3 && int.TryParse(parts[0], out r) && int.TryParse(parts[1], out g) && int.TryParse(parts[2], out m) && (parts.Length < 4 || int.TryParse(parts[3], out b))) return new ComProfile(r, g, m, b).Clamped();
             return d;
         }
-        set { var p = value.Clamped(); PlayerPrefs.SetString("TW.ComProfile", p.ReactTicks + "," + p.GazeTicks + "," + p.MoveCentis); PlayerPrefs.Save(); }
+        set { var p = value.Clamped(); PlayerPrefs.SetString("TW.ComProfile", p.ReactTicks + "," + p.GazeTicks + "," + p.MoveCentis + "," + p.Brain); PlayerPrefs.Save(); }
     }
 
     RectTransform detail;
