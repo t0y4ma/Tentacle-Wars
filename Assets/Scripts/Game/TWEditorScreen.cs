@@ -1,4 +1,4 @@
-// マップエディタ。細胞・障害物を置いて動かし、対称配置・検証・試遊・保存・JSON入出力ができる
+﻿// マップエディタ。細胞・障害物を置いて動かし、対称配置・検証・試遊・保存・JSON入出力ができる
 using System;
 using System.Collections.Generic;
 using TW.Sim;
@@ -100,6 +100,10 @@ public class TWEditorScreen : TWScreen
     {
         if (board != null) board.Destroy();
         board = null;
+        // 画面の部品は離れると壊されるので、参照も捨てる（次に開く前の OpenNew などで壊れた部品を触らないように）
+        for (int i = 0; i < toolBtns.Length; i++) toolBtns[i] = null;
+        ownerBtns.Clear();
+        symBtn = null; playBtn = null; playersSeg = null; snapSeg = null; nameField = null;
     }
 
     void BuildUI()
@@ -208,7 +212,7 @@ public class TWEditorScreen : TWScreen
 
     void RefreshPanel()
     {
-        if (toolBtns[0] == null) return;
+        if (toolBtns[0] == null || toolBtns[0].Rect == null) return;   // 画面を開いていないとき（部品が無い・壊れている）
         for (int i = 0; i < 4; i++) toolBtns[i].SetSelected((int)tool == i);
         int curOwner = selKind == Kind.Cell ? map.Cells[selIndex].Owner : placeOwner;
         for (int i = 0; i < ownerBtns.Count; i++)
