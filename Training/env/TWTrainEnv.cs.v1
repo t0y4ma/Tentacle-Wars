@@ -1,0 +1,245 @@
+// 強化学習用の対戦環境。たくさんの試合を並列に回し、学習するCOMの手が空くたびに局面を Python へ送る。
+// 通信は標準入出力（バイナリ, リトルエンディアン）。
+//   環境→Python: [int magic][int nDone]{int slot, float reward, int oppKind(0=SimpleAI,1=過去の自分)}*[int nDec][int G][int C]{int slot, int K, float shaping, float G[], float K*C[]}*
+//   Python→環境: [int type]  type=1: [int n]{int choice}*   type=2: [int len][utf8 対戦相手の重みファイル（改行区切り）]   type=9: 終了
+// 評価: TWTrainEnv --eval policy.txt [--games 200] … 学習したCOMと SimpleAI（つよい）を戦わせて勝率を表示
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using TW.Sim;
+
+public static class TWTrainEnv
+{
+    const int Magic = 0x54574231;
+
+    class Slot
+    {
+        public int Id;
+        public Simulation Sim;
+        public LearnedAI Agent;
+        public SimpleAI OppSimple;
+        public LearnedAI OppNet;
+        public int AgentSeat;
+        public bool MidTick;           // 相手は考え終わり、学習COMの選択待ち
+        public bool Waiting;           // Python の選択待ち
+        public float LastShare;
+        public float Shaping;
+        public Random Rng;
+    }
+
+    static readonly object poolLock = new object();
+    static List<PolicyNet> pool = new List<PolicyNet>();
+    static double pSimple = 1.0;
+
+    public static int Main(string[] args)
+    {
+        int games = Arg(args, "--games", 128), seed = Arg(args, "--seed", 1);
+        string eval = ArgS(args, "--eval", null);
+        if (eval != null) return Eval(eval, games, seed, ArgS(args, "--vs", null));
+
+        var stdout = new BinaryWriter(new BufferedStream(Console.OpenStandardOutput(), 1 << 20));
+        var stdin = new BinaryReader(new BufferedStream(Console.OpenStandardInput(), 1 << 20));
+        var master = new Random(seed);
+        var slots = new Slot[games];
+        for (int i = 0; i < games; i++) { slots[i] = new Slot { Id = i, Rng = new Random(master.Next()) }; NewGame(slots[i]); }
+
+        var done = new List<KeyValuePair<int, float>>();
+        while (true)
+        {
+            // 選択待ちでない試合を、次の判断まで（または終局まで）進める
+            done.Clear();
+            var doneLocal = new KeyValuePair<int, float>?[games];
+            var doneKind = new int[games];
+            Parallel.For(0, games, i =>
+            {
+                var s = slots[i];
+                if (s.Waiting) return;
+                float? r = Advance(s);
+                if (r.HasValue) { doneLocal[i] = new KeyValuePair<int, float>(i, r.Value); doneKind[i] = s.OppNet != null ? 1 : 0; NewGame(s); Advance(s); }
+            });
+            var kinds = new List<int>();
+            foreach (var d in doneLocal) if (d.HasValue) { done.Add(d.Value); kinds.Add(doneKind[d.Value.Key]); }
+
+            stdout.Write(Magic);
+            stdout.Write(done.Count);
+            for (int k = 0; k < done.Count; k++) { stdout.Write(done[k].Key); stdout.Write(done[k].Value); stdout.Write(kinds[k]); }
+            var dec = slots.Where(s => s.Waiting).ToList();
+            stdout.Write(dec.Count);
+            stdout.Write(PolicyFeatures.GlobalSize);
+            stdout.Write(PolicyFeatures.CandSize);
+            foreach (var s in dec)
+            {
+                var a = s.Agent;
+                stdout.Write(s.Id);
+                stdout.Write(a.Cands.Count);
+                stdout.Write(s.Shaping); s.Shaping = 0;
+                for (int k = 0; k < PolicyFeatures.GlobalSize; k++) stdout.Write(a.Global[k]);
+                int n = a.Cands.Count * PolicyFeatures.CandSize;
+                for (int k = 0; k < n; k++) stdout.Write(a.CandFeatures[k]);
+            }
+            stdout.Flush();
+
+            // Python からの指示
+            while (true)
+            {
+                int type;
+                try { type = stdin.ReadInt32(); } catch (EndOfStreamException) { return 0; }
+                if (type == 9) return 0;
+                if (type == 2)
+                {
+                    int len = stdin.ReadInt32();
+                    string text = Encoding.UTF8.GetString(stdin.ReadBytes(len));
+                    var nets = new List<PolicyNet>();
+                    foreach (var path in text.Split('\n').Where(p => p.Trim().Length > 0))
+                    {
+                        try { nets.Add(PolicyNet.Parse(File.ReadAllText(path.Trim()))); } catch (Exception e) { Console.Error.WriteLine("pool load failed: " + path + " " + e.Message); }
+                    }
+                    lock (poolLock) { pool = nets; pSimple = nets.Count == 0 ? 1.0 : 0.4; }
+                    continue;
+                }
+                if (type == 1)
+                {
+                    int n = stdin.ReadInt32();
+                    if (n != dec.Count) throw new InvalidDataException("choices " + n + " != " + dec.Count);
+                    for (int k = 0; k < n; k++)
+                    {
+                        int c = stdin.ReadInt32();
+                        var s = dec[k];
+                        s.Agent.Act(s.Sim, c);
+                        s.Waiting = false;
+                    }
+                    break;
+                }
+                throw new InvalidDataException("unknown type " + type);
+            }
+        }
+    }
+
+    /// <summary>判断が必要になるか終局するまで進める。終局したら学習COMから見た報酬を返す</summary>
+    static float? Advance(Slot s)
+    {
+        var sim = s.Sim;
+        int guard = 0;
+        while (!sim.Over && guard++ < 100000)
+        {
+            if (!s.MidTick)
+            {
+                if (s.OppSimple != null) s.OppSimple.Think(sim); else s.OppNet.Think(sim);
+                s.MidTick = true;
+                if (s.Agent.NeedsDecision(sim))
+                {
+                    s.Agent.Observe(sim);
+                    float share = Share(s);
+                    s.Shaping += share - s.LastShare; s.LastShare = share;
+                    s.Waiting = true;
+                    return null;
+                }
+            }
+            sim.Step();
+            s.MidTick = false;
+        }
+        if (sim.Winner == s.AgentSeat) return 1f;
+        if (sim.Winner < 0) return 0f;
+        return -1f;
+    }
+
+    static float Share(Slot s)
+    {
+        float me = s.Sim.Score(s.AgentSeat), all = 0;
+        for (int p = 0; p < s.Sim.PlayerCount; p++) all += s.Sim.Score(p);
+        return all > 0 ? me / all : 0.5f;
+    }
+
+    static readonly MapDef[] builtIn2 = Maps.BuiltIn.Where(m => m.Players == 2).ToArray();
+
+    static void NewGame(Slot s)
+    {
+        var rng = s.Rng;
+        var map = rng.NextDouble() < 0.4 ? builtIn2[rng.Next(builtIn2.Length)] : RandomMap(rng);
+        s.Sim = new Simulation(map);
+        s.AgentSeat = rng.Next(2);
+        int opp = 1 - s.AgentSeat;
+        s.Agent = new LearnedAI(s.AgentSeat, null, rng.Next(1, int.MaxValue)).SetProfile(RandomProfile(rng));
+        s.OppSimple = null; s.OppNet = null;
+        PolicyNet oppNet = null;
+        lock (poolLock) { if (pool.Count > 0 && rng.NextDouble() >= pSimple) oppNet = pool[rng.Next(pool.Count)]; }
+        if (oppNet != null) s.OppNet = new LearnedAI(opp, oppNet, rng.Next(1, int.MaxValue)).SetProfile(RandomProfile(rng));
+        else s.OppSimple = new SimpleAI(opp, rng.Next(1, int.MaxValue)).SetProfile(RandomProfile(rng));
+        s.MidTick = false; s.Waiting = false; s.Shaping = 0; s.LastShare = 0.5f;
+    }
+
+    /// <summary>強さは3つのプリセットの間でばらつかせる（どの設定でも上手く動くように）</summary>
+    static ComProfile RandomProfile(Random rng)
+    {
+        var a = SimpleAI.Presets[0]; var b = SimpleAI.Presets[2];
+        double t = rng.NextDouble();
+        return new ComProfile((int)Math.Round(a.ReactTicks + (b.ReactTicks - a.ReactTicks) * t),
+                              (int)Math.Round(a.GazeTicks + (b.GazeTicks - a.GazeTicks) * t),
+                              (int)Math.Round(a.MoveCentis + (b.MoveCentis - a.MoveCentis) * t));
+    }
+
+    /// <summary>点対称のランダムな2人用マップ</summary>
+    static MapDef RandomMap(Random rng)
+    {
+        for (int attempt = 0; attempt < 200; attempt++)
+        {
+            var m = new MapDef { Id = "random", Name = "random", Players = 2 };
+            float hw = MapDef.FieldHalfWidth - MapDef.CellMargin, hh = MapDef.FieldHalfHeight - MapDef.CellMargin;
+            float px = -hw + (float)rng.NextDouble() * 3f, py = (float)(rng.NextDouble() * 2 - 1) * hh;
+            int pe = 15 + rng.Next(3) * 5;
+            m.Cells.Add(new CellDef(px, py, 0, pe)); m.Cells.Add(new CellDef(-px, -py, 1, pe));
+            int pairs = 2 + rng.Next(5);
+            for (int k = 0; k < pairs; k++)
+            {
+                float x = (float)(rng.NextDouble() * 2 - 1) * hw, y = (float)(rng.NextDouble() * 2 - 1) * hh;
+                int e = 10 + rng.Next(8) * 5;
+                m.Cells.Add(new CellDef(x, y, -1, e)); m.Cells.Add(new CellDef(-x, -y, -1, e));
+            }
+            if (rng.NextDouble() < 0.5) m.Cells.Add(new CellDef(0, 0, -1, 40 + rng.Next(7) * 10));
+            int walls = rng.Next(3);
+            for (int k = 0; k < walls; k++)
+            {
+                float x = (float)(rng.NextDouble() * 2 - 1) * (hw - 1), y = (float)(rng.NextDouble() * 2 - 1) * (hh - 1);
+                float r = 0.4f + (float)rng.NextDouble() * 0.8f;
+                m.Obstacles.Add(new ObstacleDef(x, y, r));
+                if (Math.Abs(x) > 0.05f || Math.Abs(y) > 0.05f) m.Obstacles.Add(new ObstacleDef(-x, -y, r));
+            }
+            for (int i = 0; i < m.Cells.Count; i++) { m.Cells[i].X = (float)Math.Round(m.Cells[i].X, 2); m.Cells[i].Y = (float)Math.Round(m.Cells[i].Y, 2); }
+            if (MapValidator.Validate(m).Count == 0) return m;
+        }
+        return builtIn2[rng.Next(builtIn2.Length)];
+    }
+
+    /// <summary>学習したCOM と SimpleAI（つよい）または別の重みを戦わせる</summary>
+    static int Eval(string policyPath, int games, int seed, string vsPath)
+    {
+        var net = PolicyNet.Parse(File.ReadAllText(policyPath));
+        PolicyNet vs = vsPath != null ? PolicyNet.Parse(File.ReadAllText(vsPath)) : null;
+        var maps = Maps.BuiltIn.Where(m => m.Players == 2).ToArray();
+        var strong = SimpleAI.Presets[2];
+        int[] wins = new int[3];   // 勝ち・負け・引き分け
+        var perMap = new int[maps.Length, 2];
+        Parallel.For(0, games, g =>
+        {
+            var rng = new Random(seed * 100003 + g);
+            int mi = g % maps.Length;
+            var sim = new Simulation(maps[mi]);
+            int seat = (g / maps.Length) % 2, opp = 1 - seat;
+            var agent = new LearnedAI(seat, net, rng.Next(1, int.MaxValue)).SetProfile(strong);
+            LearnedAI oppNet = vs != null ? new LearnedAI(opp, vs, rng.Next(1, int.MaxValue)).SetProfile(strong) : null;
+            var oppAi = vs == null ? new SimpleAI(opp, rng.Next(1, int.MaxValue)).SetProfile(strong) : null;
+            while (!sim.Over) { if (oppAi != null) oppAi.Think(sim); else oppNet.Think(sim); agent.Think(sim); sim.Step(); }
+            int r = sim.Winner == seat ? 0 : sim.Winner < 0 ? 2 : 1;
+            lock (wins) { wins[r]++; if (r == 0) perMap[mi, 0]++; else perMap[mi, 1]++; }
+        });
+        Console.WriteLine("vs " + (vs != null ? "net" : "SimpleAI(つよい)") + ": win " + wins[0] + " lose " + wins[1] + " draw " + wins[2] + "  rate " + (wins[0] * 100.0 / games).ToString("0.0") + "%");
+        for (int i = 0; i < maps.Length; i++) Console.WriteLine("  " + maps[i].Id + ": " + perMap[i, 0] + "-" + perMap[i, 1]);
+        return 0;
+    }
+
+    static int Arg(string[] a, string k, int d) { int i = Array.IndexOf(a, k); return i >= 0 && i + 1 < a.Length ? int.Parse(a[i + 1]) : d; }
+    static string ArgS(string[] a, string k, string d) { int i = Array.IndexOf(a, k); return i >= 0 && i + 1 < a.Length ? a[i + 1] : d; }
+}

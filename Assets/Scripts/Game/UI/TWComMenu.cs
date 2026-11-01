@@ -77,7 +77,7 @@ public static class TWComMenu
         // 考え方：標準（手作りのルール）／学習（強化学習で鍛えたCOM）
         var brainLbl = TWUI.Label(pr, "考え方", 22, TWUI.TextDim, TextAnchor.MiddleLeft);
         TWUI.Place(brainLbl.rectTransform, 0.05f, 0.75f, 0.3f, 0.86f);
-        var brainNames = new[] { ComProfile.BrainNames[0], ComProfile.BrainNames[1] + (TWLearnedCom.Available ? "" : "（なし）") };
+        var brainNames = new[] { ComProfile.BrainNames[0], ComProfile.BrainNames[1] + (TWLearnedCom.Available ? "（2人用）" : "（なし）") };
         brains = TWUI.Segments(pr, brainNames, p.Brain, i => { p.Brain = i; apply(); }, 22);
         TWUI.Place((RectTransform)brains.Buttons[0].Rect.parent, 0.3f, 0.75f, 0.95f, 0.86f);
 

@@ -21,10 +21,11 @@ namespace TW.Sim
     /// <summary>強さの設定から COM を作る（学習COMの重みが無ければ標準のCOM）</summary>
     public static class ComFactory
     {
-        public static IComPlayer Create(int player, ComProfile p, int seed)
+        /// <summary>players はマップの人数。学習COMは2人対戦でしか鍛えていないので、3人以上では標準のCOMが代わる</summary>
+        public static IComPlayer Create(int player, ComProfile p, int seed, int players = 2)
         {
             p = p.Clamped();
-            if (p.Brain == ComProfile.BrainLearned && LearnedAI.SharedNet != null)
+            if (p.Brain == ComProfile.BrainLearned && LearnedAI.SharedNet != null && players <= LearnedAI.MaxPlayers)
                 return new LearnedAI(player, LearnedAI.SharedNet, seed).SetProfile(p);
             return new SimpleAI(player, seed).SetProfile(p);
         }
@@ -72,6 +73,10 @@ namespace TW.Sim
         int lookCell = -1;   // 今見ている細胞（-1 = 細胞以外）
 
         void Send(Simulation sim, Command c) { if (Emit != null) Emit(c); else sim.Enqueue(c); }
+
+        // 何もできずに待っている時間。長くなったら、押し合いで止まっている触手を引いて手を変える（4人対戦などで固まらないように）
+        int lastActTick;
+        const int ReplanTicks = 8 * Balance.TicksPerSecond;
 
         public SimpleAI(int player, int seed = 0)
         {
@@ -134,11 +139,27 @@ namespace TW.Sim
                     }
                 }
 
+                // しばらく手が止まっていたら、押し切れない攻撃を引いてエネルギーを手元に戻す
+                int idle = sim.Tick - lastActTick;
+                if (idle >= ReplanTicks)
+                {
+                    foreach (var t in sim.Tentacles)
+                    {
+                        if (t.Dead || t.Src != c.Id || t.State != TentacleState.Attached) continue;
+                        var d = sim.Cells[t.Dst];
+                        if (d.Owner == Player || Need(d) < c.Energy) continue;
+                        int px, py; PointOn(sim, t, 1, out px, out py);
+                        Consider(20 + idle / Balance.TicksPerSecond, Command.Retract(Player, t.Id), px, py, Dist(cursorX, cursorY, px, py), gaze + swipe, -1,
+                            ref best, ref bestScore, ref bestX, ref bestY, ref bestTravel, ref bestExtra, ref bestLook);
+                    }
+                }
+
                 ConsiderConnect(sim, c, ref best, ref bestScore, ref bestX, ref bestY, ref bestTravel, ref bestExtra, ref bestLook);
             }
 
             if (bestScore <= 0) return;
             hasPending = true;
+            lastActTick = sim.Tick;
             pending = best;
             int think = react * 3 / 4 + rng.Next(react / 2 + 1);   // 判断時間は ±25% ばらつく
             pendingAt = sim.Tick + think + (int)Math.Round(bestTravel * ticksPerUnit) + bestExtra;

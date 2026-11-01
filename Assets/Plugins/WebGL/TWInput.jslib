@@ -62,12 +62,41 @@ mergeInto(LibraryManager.library, {
       el.addEventListener('keyup', stop);
       el.addEventListener('keypress', stop);
       window.addEventListener('resize', onResize);
-      document.body.appendChild(el);
+      // 全画面中は全画面にしている要素の中にしか表示されないので、そこへ入れる（canvas 自体が全画面だと重ねられないため、TW_InstallFullscreen で枠ごと全画面にしている）
+      var fs = document.fullscreenElement || document.webkitFullscreenElement;
+      (fs && fs.tagName !== 'CANVAS' ? fs : document.body).appendChild(el);
       window.twInput = { el: el, done: done };
       el.focus();
       if (!multiline) el.select();
     };
     document.addEventListener('pointerup', fire, true);
+  },
+
+  // 全画面ボタンを「canvas だけ」ではなく「canvas を含む枠」を全画面にするよう差し替える。
+  // canvas だけを全画面にすると、上に重ねる HTML の入力欄が表示されない
+  TW_InstallFullscreen: function () {
+    var canvas = (typeof Module !== 'undefined' && Module.canvas) ? Module.canvas : document.querySelector('canvas');
+    if (!canvas) return;
+    var box = document.querySelector('#unity-container') || canvas.parentElement;
+    if (!box || box === document.body) return;
+    if (!document.getElementById('tw-fullscreen-style')) {
+      var st = document.createElement('style');
+      st.id = 'tw-fullscreen-style';
+      var sel = box.id ? '#' + box.id : '.tw-fs-box';
+      if (!box.id) box.classList.add('tw-fs-box');
+      st.textContent =
+        sel + ':fullscreen, ' + sel + ':-webkit-full-screen { background: #000; display: flex; flex-direction: column; }\n' +
+        sel + ':fullscreen canvas, ' + sel + ':-webkit-full-screen canvas { width: 100% !important; height: 100% !important; flex: 1 1 auto; }\n' +
+        sel + ':fullscreen #unity-footer, ' + sel + ':-webkit-full-screen #unity-footer { display: none !important; }\n';
+      document.head.appendChild(st);
+    }
+    var goFull = function () {
+      if (document.fullscreenElement || document.webkitFullscreenElement) return;
+      if (box.requestFullscreen) box.requestFullscreen();
+      else if (box.webkitRequestFullscreen) box.webkitRequestFullscreen();
+    };
+    var btn = document.querySelector('#unity-fullscreen-button');
+    if (btn) btn.onclick = goFull;
   },
 
   // 入力中の HTML の入力欄を閉じる（画面を切り替えたときなど）

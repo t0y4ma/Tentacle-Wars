@@ -1,4 +1,4 @@
-﻿// 通信の入口。NetworkManager（SimpleWebTransport）を用意し、サーバー／クライアントの受け口を登録する
+// 通信の入口。NetworkManager（SimpleWebTransport）を用意し、サーバー／クライアントの受け口を登録する
 using System;
 using System.Collections.Generic;
 using Mirror;
@@ -13,6 +13,8 @@ public class TWNetManager : NetworkManager
     public override void OnStartServer()
     {
         base.OnStartServer();
+        // サーバーも各クライアントへ PingInterval ごとに ping を送る（既定0.1秒＝毎秒10回、返事も毎秒10回）。起動時の初期化で既定に戻るのでここで設定する
+        NetworkTime.PingInterval = TWNetConfig.PingIntervalSeconds;
         Server = new TWServer();
         Server.Register();
         Debug.Log("[TW] サーバー起動 port=" + ((SimpleWebTransport)transport).port);
@@ -36,7 +38,9 @@ public class TWNetManager : NetworkManager
 
     public override void OnClientConnect()
     {
-        base.OnClientConnect();
+        // base（Ready / AddPlayer）は呼ばない。Ready にすると Mirror が時刻合わせのメッセージを毎秒 sendRate 回（既定60回）
+        // 往復させ続ける。このゲームは NetworkIdentity を使わず自前のメッセージだけでやり取りするので Ready は要らない
+        NetworkTime.PingInterval = TWNetConfig.PingIntervalSeconds;   // 既定は0.1秒ごと（毎秒10回）。遅延の計測にしか使わないので間引く
         NetworkClient.Send(new TWHello { Protocol = TWProtocol.Version, Token = TWNet.Token, Name = TWNet.Name });
     }
 
@@ -57,6 +61,10 @@ public static class TWNetConfig
     public static bool UseWss = false;        // ブラウザから wss:// でつなぐか（Caddy 経由）
     public static ushort ClientPort = 0;      // 0 = サーバーと同じ。wss で 443 を使うときは 443
     public static string Url = "";            // 指定があればこの URL へつなぐ（例 wss://example.org/tentacle。Caddy がパスで振り分ける）
+    // 何も届かなければ切断とみなすまでの時間。ブラウザは別のウィンドウや別のタブを見ている間ゲームが止まって送信も止まるので、
+    // 短いとその間に切られる（以前は20秒）
+    public const int ReceiveTimeoutMs = 60000;
+    public const float PingIntervalSeconds = 2f;   // 生存確認（Mirror の ping）の間隔。受信タイムアウトより十分短くする
 
     static bool loaded;
     public static void Load()
@@ -143,6 +151,7 @@ public static class TWNet
         var swt = go.AddComponent<SimpleWebTransport>();
         swt.port = TWNetConfig.ServerPort;
         swt.maxMessageSize = 64 * 1024;
+        swt.receiveTimeout = TWNetConfig.ReceiveTimeoutMs;
         swt.clientUseWss = TWNetConfig.UseWss;
         var cws = swt.clientWebsocketSettings;
         if (TWNetConfig.ClientPort != 0) { cws.ClientPortOption = WebsocketPortOption.SpecifyPort; cws.CustomClientPort = TWNetConfig.ClientPort; }
@@ -154,6 +163,7 @@ public static class TWNet
         nm.playerPrefab = null;
         nm.networkAddress = TWNetConfig.Address;
         nm.maxConnections = 400;
+        nm.sendRate = 10;   // 同期オブジェクトは使わないので低くてよい（念のため。Ready にしないので時刻合わせのメッセージ自体は送られない）
         nm.headlessStartMode = HeadlessStartOptions.DoNothing;
         nm.editorAutoStart = false;
         go.SetActive(true);
@@ -193,6 +203,15 @@ public static class TWNet
         if (NetworkClient.isConnected) NetworkClient.Send(msg);
     }
 
+    /// <summary>表示名を変える。保存し、つながっていればサーバーへ知らせる（部屋の中なら全員の表示が変わる）</summary>
+    public static void SetName(string name)
+    {
+        name = (name ?? "").Trim();
+        if (name.Length > TWProtocol.MaxNameLength) name = name.Substring(0, TWProtocol.MaxNameLength);
+        Name = name;
+        if (Welcomed) Send(new TWSetName { Name = name });
+    }
+
     public static void SendCmd(Command c, int comSeat = -1)
     {
         Send(new TWCmd { Type = (byte)c.Type, A = c.A, B = c.B, Seat = comSeat });
@@ -229,6 +248,7 @@ public static class TWNet
             var map = MapJson.FromJson(m.MapJson, out err);
             if (map == null) { Debug.LogError("[TW] 地図を読めません: " + err); return; }
             Match = new TWOnlineMatch(map, m);
+            if (Room != null) Match.OnRoomState(Room.Value);   // 入り直したときは部屋の状態が先に届いている（代打ち・切断中の表示に使う）
             LastGameOver = null;
             Raise(GameStarted);
         }, false);
@@ -334,7 +354,7 @@ public class TWOnlineMatch
             int seat = seats[i];
             var pf = (profiles != null && i * 4 + 3 < profiles.Length ? new ComProfile(profiles[i * 4], profiles[i * 4 + 1], profiles[i * 4 + 2], profiles[i * 4 + 3]) : SimpleAI.Presets[SimpleAI.DefaultLevel]).Clamped();
             if (duty.ContainsKey(seat) && duty[seat].Profile.Brain == pf.Brain) { duty[seat].ApplyProfile(pf); continue; }   // 考え方が変わったら作り直す
-            var ai = TWLearnedCom.Create(seat, pf);
+            var ai = TWLearnedCom.Create(seat, pf, Sim.PlayerCount);
             ai.Emit = c => TWNet.SendCmd(c, seat);
             duty[seat] = ai;
         }

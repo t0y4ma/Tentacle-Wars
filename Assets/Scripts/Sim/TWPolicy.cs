@@ -359,6 +359,8 @@ namespace TW.Sim
     {
         /// <summary>ゲーム本体で使う重み（起動時に読み込む）。null なら学習COMは標準のCOMで代わる</summary>
         public static PolicyNet SharedNet;
+        /// <summary>学習COMが使える最大人数（2人対戦でしか鍛えていない）</summary>
+        public const int MaxPlayers = 2;
 
         public int Player { get; private set; }
         public Action<Command> Emit { get; set; }

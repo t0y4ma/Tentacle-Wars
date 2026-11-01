@@ -1,4 +1,4 @@
-﻿// ブラウザ版の文字入力。uGUI の入力欄はブラウザでは日本語入力などが使えないため、
+// ブラウザ版の文字入力。uGUI の入力欄はブラウザでは日本語入力などが使えないため、
 // 押された入力欄の上に HTML の入力欄を重ねて入力させ、打った文字をこちらへ戻す（TWInput.jslib）。
 // エディタ・その他の環境では何もしない（uGUI の入力欄がそのまま使われる）。
 using System.Collections.Generic;
@@ -13,6 +13,11 @@ public class TWWebInput : MonoBehaviour, IPointerDownHandler
 #if UNITY_WEBGL && !UNITY_EDITOR
     [DllImport("__Internal")] static extern void TW_ArmInput(string go, int id, string text, float x, float y, float w, float h, float font, int multiline, int maxLen, int password, string colors);
     [DllImport("__Internal")] static extern void TW_CloseInput();
+    [DllImport("__Internal")] static extern void TW_InstallFullscreen();
+
+    /// <summary>起動時に全画面ボタンを差し替える（canvas ではなく枠ごと全画面にして、入力欄を重ねられるようにする）</summary>
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    static void InstallFullscreen() { TW_InstallFullscreen(); }
     const bool Enabled = true;
 #else
     const bool Enabled = false;

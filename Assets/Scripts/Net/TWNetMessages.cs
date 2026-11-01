@@ -1,9 +1,10 @@
-﻿// サーバーとクライアントの間でやり取りするメッセージ。形を変えたらサーバーとクライアントを同時に更新すること（Protocol を上げる）
+// サーバーとクライアントの間でやり取りするメッセージ。形を変えたらサーバーとクライアントを同時に更新すること（Protocol を上げる）
 using Mirror;
 
 public static class TWProtocol
 {
-    public const int Version = 7;   // 7: COMの考え方（標準・学習）を追加（6: COMの強さを3つの時間で、5: 席ごとの段階、4: 部屋ごと）
+    public const int Version = 8;   // 8: 部屋の中での名前変更（TWSetName）
+    // 7: COMの考え方（標準・学習）を追加（6: COMの強さを3つの時間で、5: 席ごとの段階、4: 部屋ごと）
     // 3: 押し合いは接点で届いた扱い・押し戻しながら伸びる（2: 押し合い・片方向の接続）
     public const int MaxNameLength = 12;
     public const int MaxRoomNameLength = 20;
@@ -29,6 +30,8 @@ public struct TWChat : NetworkMessage { public string Text; }
 public struct TWCmd : NetworkMessage { public byte Type; public int A; public int B; public int Seat; }
 public struct TWResign : NetworkMessage { }
 public struct TWSnapshotRequest : NetworkMessage { }
+/// <summary>表示名の変更（ロビーでも部屋の中でも）</summary>
+public struct TWSetName : NetworkMessage { public string Name; }
 
 // ---------------- サーバー → クライアント ----------------
 

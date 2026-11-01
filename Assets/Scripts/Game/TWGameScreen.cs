@@ -20,6 +20,7 @@ public class TWGameScreen : TWScreen
     readonly List<IComPlayer> ais = new List<IComPlayer>();
     TWBoardView board;
     float acc, speed = 1f, interp;
+    TWUI.Btn speedBtn;
     bool paused, resultShown;
 
     // HUD
@@ -98,13 +99,27 @@ public class TWGameScreen : TWScreen
         {
             sim = new Simulation(map);
             for (int p = 0; p < sim.PlayerCount; p++)
-                if (p != localPlayer) ais.Add(TWLearnedCom.Create(p, comProfiles != null && p < comProfiles.Length ? comProfiles[p] : SimpleAI.Presets[SimpleAI.DefaultLevel]));
+                if (p != localPlayer) ais.Add(TWLearnedCom.Create(p, comProfiles != null && p < comProfiles.Length ? comProfiles[p] : SimpleAI.Presets[SimpleAI.DefaultLevel], sim.PlayerCount));
         }
+        board.Flip = ViewFlip(map, localPlayer);
         board.Build(sim);
+        speed = 1f;   // 試合ごとに速度を戻す
+        if (speedBtn != null && speedBtn.Label != null) speedBtn.Label.text = "速度 ×1";
         acc = 0; paused = false; resultShown = false; drag = DragMode.None;
         if (result != null) TWUI.Destroy(result);
         if (menu != null) TWUI.Destroy(menu);
         BuildChips();
+    }
+
+    /// <summary>自分の本拠地が左下（または中央下）に来るよう、盤面を上下・左右に返す向き</summary>
+    static Vector2 ViewFlip(MapDef m, int seat)
+    {
+        if (m == null || seat < 0) return Vector2.one;
+        float sx = 0, sy = 0; int n = 0;
+        foreach (var c in m.Cells) if (c.Owner == seat) { sx += c.X; sy += c.Y; n++; }
+        if (n == 0) return Vector2.one;
+        sx /= n; sy /= n;
+        return new Vector2(sx > 0.5f ? -1 : 1, sy > 0.5f ? -1 : 1);
     }
 
     // ---------------- HUD ----------------
@@ -123,9 +138,8 @@ public class TWGameScreen : TWScreen
 
         if (!Online)
         {
-            TWUI.Btn sp = null;
-            sp = TWUI.Button(top, "速度 ×1", () => { speed = speed >= 4 ? 1 : speed * 2; sp.Label.text = "速度 ×" + speed; }, TWUI.Style.Normal, 24);
-            TWUI.Place(sp.Rect, 0.77f, 0.14f, 0.87f, 0.86f);
+            speedBtn = TWUI.Button(top, "速度 ×1", () => { speed = speed >= 4 ? 1 : speed * 2; speedBtn.Label.text = "速度 ×" + speed; }, TWUI.Style.Normal, 24);
+            TWUI.Place(speedBtn.Rect, 0.77f, 0.14f, 0.87f, 0.86f);
         }
         var mb = TWUI.Button(top, "メニュー", OpenMenu, TWUI.Style.Normal, 24);
         TWUI.Place(mb.Rect, 0.88f, 0.14f, 0.99f, 0.86f);
@@ -176,11 +190,11 @@ public class TWGameScreen : TWScreen
             if (online.Seats != null && p < online.Seats.Length)
             {
                 var s = online.Seats[p];
-                if (s.Resigned) n += "<color=#8FA9A6>（降参）</color>";
-                else if (s.Takeover) n += "<color=#F2B544>（COM代打ち）</color>";
-                else if (!s.Com && !s.Connected) n += "<color=#F2B544>（切断中）</color>";
+                if (s.Resigned) n += " <size=18><color=#8FA9A6>降参</color></size>";
+                else if (s.Takeover) n += " <size=18><color=#F2B544>COM代打ち</color></size>";
+                else if (!s.Com && !s.Connected) n += " <size=18><color=#F2B544>切断中</color></size>";
             }
-            return p == localPlayer ? n + "<color=#9BE15D>（あなた）</color>" : n;
+            return p == localPlayer ? n + " <size=18><color=#9BE15D>あなた</color></size>" : n;
         }
         return p == localPlayer ? "あなた" : "COM";
     }
@@ -190,7 +204,8 @@ public class TWGameScreen : TWScreen
         for (int p = 0; p < chipTexts.Count; p++)
         {
             int cells = sim.CellCount(p);
-            chipTexts[p].text = cells == 0 ? WhoIs(p) + "　<color=#8FA9A6>全滅</color>" : WhoIs(p) + "　細胞" + cells + "　" + sim.Score(p);
+            // 1行目に名前と状態、2行目に細胞の数と合計（状態の表示で名前の文字が小さくならないように分ける）
+            chipTexts[p].text = WhoIs(p) + "\n<size=20>" + (cells == 0 ? "<color=#8FA9A6>全滅</color>" : "<color=#C9D6D3>細胞" + cells + "　" + sim.Score(p) + "</color>") + "</size>";
         }
         if (sim.TimeLimitTicks >= int.MaxValue / 2) timer.text = "∞";
         else
@@ -377,8 +392,8 @@ public class TWGameScreen : TWScreen
         var canvas = parent.GetComponentInParent<Canvas>().rootCanvas;
         Camera uiCam = canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : canvas.worldCamera;
         Vector2 top, bottom;
-        RectTransformUtility.ScreenPointToLocalPointInRectangle(parent, App.Cam.WorldToScreenPoint(new Vector3(c.X, c.Y + c.Radius + 0.12f, 0)), uiCam, out top);
-        RectTransformUtility.ScreenPointToLocalPointInRectangle(parent, App.Cam.WorldToScreenPoint(new Vector3(c.X, c.Y - c.Radius - 0.12f, 0)), uiCam, out bottom);
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(parent, App.Cam.WorldToScreenPoint(board.V3(c.X, c.Y) + new Vector3(0, c.Radius + 0.12f, 0)), uiCam, out top);
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(parent, App.Cam.WorldToScreenPoint(board.V3(c.X, c.Y) - new Vector3(0, c.Radius + 0.12f, 0)), uiCam, out bottom);
         var pr = parent.rect;
         Vector2 size = tipRect.sizeDelta;
         bool below = top.y + size.y > pr.yMax - 70;   // 上のHUDに重なるなら細胞の下へ
@@ -419,7 +434,7 @@ public class TWGameScreen : TWScreen
         if (pointer == null || cam == null) return;
         Vector2 screen = pointer.position.ReadValue();
         Vector3 w = cam.ScreenToWorldPoint(new Vector3(screen.x, screen.y, 10));
-        pointerWorld = new Vector2(w.x, w.y);
+        pointerWorld = board.V(new Vector2(w.x, w.y));   // 画面の向きを戻して、シミュレーションの座標にする
 
         if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame && !resultShown) OpenMenu();
         if (InputBlocked()) { drag = DragMode.None; swipeTrail.Clear(); return; }

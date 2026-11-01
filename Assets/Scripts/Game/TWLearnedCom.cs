@@ -19,9 +19,9 @@ public static class TWLearnedCom
         catch (System.Exception e) { Debug.LogError("[TW] 学習COMの重みを読めません: " + e.Message); }
     }
 
-    public static IComPlayer Create(int player, ComProfile p)
+    public static IComPlayer Create(int player, ComProfile p, int players)
     {
         Ensure();
-        return ComFactory.Create(player, p, Random.Range(1, 99999));
+        return ComFactory.Create(player, p, Random.Range(1, 99999), players);
     }
 }

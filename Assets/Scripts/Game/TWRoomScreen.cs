@@ -1,4 +1,4 @@
-﻿// オンラインの部屋（待機中）：席・マップ・設定・チャット。部屋主が開始する
+// オンラインの部屋（待機中）：席・マップ・設定・チャット。部屋主が開始する
 using System.Collections.Generic;
 using TW.Sim;
 using UnityEngine;
@@ -10,7 +10,7 @@ public class TWRoomScreen : TWScreen
     RawImage preview;
     Text mapName, timeLabel, specLabel;
     RectTransform seatsBox, hostControls, myControls;
-    InputField chatInput;
+    InputField chatInput, nameInput;
     string lastMapJson;
     TWUI.Btn readyBtn, startBtn;
 
@@ -40,7 +40,21 @@ public class TWRoomScreen : TWScreen
         TWUI.Place(timeLabel.rectTransform, 0, 0.47f, 1, 0.53f);
         specLabel = TWUI.Label(lp, "", 24, TWUI.TextDim, TextAnchor.MiddleLeft);
         TWUI.Place(specLabel.rectTransform, 0, 0.42f, 1, 0.47f);
-        hostControls = TWUI.Rect("HostControls", lp); TWUI.Place(hostControls, 0, 0, 1, 0.4f);
+        hostControls = TWUI.Rect("HostControls", lp); TWUI.Place(hostControls, 0, 0.1f, 1, 0.42f);
+
+        // 表示名（部屋の中でも変えられる。全員の表示が変わる）
+        nameInput = TWUI.Input(lp, "表示名（" + TWProtocol.MaxNameLength + "文字まで）", 24);
+        TWUI.Place((RectTransform)nameInput.transform, 0, 0, 0.66f, 0.085f);
+        nameInput.characterLimit = TWProtocol.MaxNameLength;
+        nameInput.text = TWNet.Name;
+        nameInput.onEndEdit.AddListener(s =>
+        {
+            bool enter = UnityEngine.InputSystem.Keyboard.current != null &&
+                (UnityEngine.InputSystem.Keyboard.current.enterKey.wasPressedThisFrame || UnityEngine.InputSystem.Keyboard.current.numpadEnterKey.wasPressedThisFrame);
+            if (enter || TWWebInput.SubmittedThisFrame) ApplyName();
+        });
+        var nameBtn = TWUI.Button(lp, "名前を変える", ApplyName, TWUI.Style.Normal, 22);
+        TWUI.Place(nameBtn.Rect, 0.68f, 0, 1, 0.085f);
 
         // ---- 中：席 ----
         var mid = TWUI.Panel(Root, TWUI.Agar, true, "Seats");
@@ -105,6 +119,14 @@ public class TWRoomScreen : TWScreen
         App.Show(App.Game);
     }
 
+    void ApplyName()
+    {
+        var s = nameInput.text.Trim();
+        if (s.Length == 0) { App.Toast("名前を入れてください", 2f); nameInput.text = TWNet.Name; return; }
+        nameInput.text = s;
+        TWNet.SetName(s);
+    }
+
     void SendChat()
     {
         var t = chatInput.text.Trim();
@@ -156,14 +178,14 @@ public class TWRoomScreen : TWScreen
         {
             var pick = TWUI.Button(hostControls, "マップを変える", () => TWMapPicker.Open(m =>
                 TWNet.Send(new TWRoomSettings { MapJson = MapJson.ToJson(m), TimeLimitSec = r.TimeLimitSec, AllowSpectators = r.AllowSpectators }), r.MapJson), TWUI.Style.Normal, 26);
-            TWUI.Place(pick.Rect, 0, 0.72f, 1, 0.92f);
+            TWUI.Place(pick.Rect, 0, 0.68f, 1, 0.95f);
             int idx = System.Array.IndexOf(TWServer.TimeLimits, r.TimeLimitSec);
             var seg = TWUI.Segments(hostControls, new[] { "5分", "8分", "12分", "無制限" }, idx < 0 ? 1 : idx, i =>
                 TWNet.Send(new TWRoomSettings { MapJson = "", TimeLimitSec = TWServer.TimeLimits[i], AllowSpectators = r.AllowSpectators }), 22);
-            TWUI.Place((RectTransform)seg.Buttons[0].Rect.parent, 0, 0.46f, 1, 0.64f);
+            TWUI.Place((RectTransform)seg.Buttons[0].Rect.parent, 0, 0.36f, 1, 0.62f);
             var sseg = TWUI.Segments(hostControls, new[] { "観戦を許可", "観戦させない" }, r.AllowSpectators ? 0 : 1, i =>
                 TWNet.Send(new TWRoomSettings { MapJson = "", TimeLimitSec = r.TimeLimitSec, AllowSpectators = i == 0 }), 22);
-            TWUI.Place((RectTransform)sseg.Buttons[0].Rect.parent, 0, 0.22f, 1, 0.4f);
+            TWUI.Place((RectTransform)sseg.Buttons[0].Rect.parent, 0, 0.04f, 1, 0.3f);
         }
         else
         {

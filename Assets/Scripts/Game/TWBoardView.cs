@@ -53,6 +53,11 @@ public class TWBoardView
         spriteMat = Resources.Load<Material>("TW/SpriteUnlit");
     }
 
+    /// <summary>表示の向き（自分の本拠地が下・左に来るよう、盤面を上下・左右に返す）。シミュレーションの座標は変えない</summary>
+    public Vector2 Flip = Vector2.one;
+    public Vector2 V(Vector2 p) { return new Vector2(p.x * Flip.x, p.y * Flip.y); }
+    public Vector3 V3(float x, float y) { return new Vector3(x * Flip.x, y * Flip.y, 0); }
+
     public TWBoardView(string name)
     {
         LoadAssets();
@@ -85,7 +90,7 @@ public class TWBoardView
         foreach (var o in sim.Obstacles)
         {
             var sr = MakeSprite("Obstacle", obstacleSprite, -50, Root);
-            sr.transform.position = new Vector3(o.X, o.Y, 0);
+            sr.transform.position = V3(o.X, o.Y);
             sr.transform.localScale = Vector3.one * (o.R * 2 / 0.86f);
             sr.color = new Color(0.55f, 0.65f, 0.45f, 0.9f);
             obstacles.Add(sr);
@@ -139,7 +144,7 @@ public class TWBoardView
             var c = sim.Cells[i];
             var v = cells[i];
             var col = ColorOf(c.Owner);
-            v.Root.position = new Vector3(c.X, c.Y, 0);
+            v.Root.position = V3(c.X, c.Y);
             v.Body.sprite = cellSprites[c.Grade];
             v.Body.color = col;
             float target = c.Radius / BodyRadiusInTex;
@@ -213,7 +218,7 @@ public class TWBoardView
         var sr = pool[used++];
         sr.enabled = true;
         sr.sortingOrder = order;
-        sr.transform.position = new Vector3(pos.x, pos.y, 0);
+        sr.transform.position = V3(pos.x, pos.y);
         sr.transform.localScale = Vector3.one * size;
         sr.color = c;
     }

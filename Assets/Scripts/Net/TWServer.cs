@@ -1,4 +1,4 @@
-﻿// サーバー側：ロビー・部屋・試合の進行。試合はサーバーが正本を持ち、操作だけを全員へ配る
+// サーバー側：ロビー・部屋・試合の進行。試合はサーバーが正本を持ち、操作だけを全員へ配る
 using System.Collections.Generic;
 using Mirror;
 using TW.Sim;
@@ -22,7 +22,7 @@ public class TWServer
         public bool Hello;
         public Room Room;
         public int Seat = -1;          // 部屋の中での席（-1 = 観戦）
-        public float LastChat;
+        public float LastChat, LastRename = -10f;
         public float CmdWindowStart; public int CmdCount;
     }
 
@@ -76,6 +76,7 @@ public class TWServer
         NetworkServer.RegisterHandler<TWCmd>(OnCmd, false);
         NetworkServer.RegisterHandler<TWResign>(OnResign, false);
         NetworkServer.RegisterHandler<TWSnapshotRequest>(OnSnapshotRequest, false);
+        NetworkServer.RegisterHandler<TWSetName>(OnSetName, false);
     }
 
     public void OnConnect(NetworkConnectionToClient conn) { clients[conn.connectionId] = new Client { Conn = conn }; }
@@ -115,14 +116,20 @@ public class TWServer
         c.Hello = true;
         c.Token = Clean(m.Token, 64, System.Guid.NewGuid().ToString("N"));
         c.Name = Clean(m.Name, TWProtocol.MaxNameLength, "ゲスト");
+        conn.Send(RejoinInfo(c));
+        conn.Send(BuildList());
+    }
+
+    /// <summary>戻れる試合（席が残っている試合中の部屋）。ロビーの「試合に戻る」に使う</summary>
+    TWWelcome RejoinInfo(Client c)
+    {
         int rejoin = -1; string rejoinName = "";
         foreach (var r in rooms.Values)
         {
-            if (r.Phase == TWRoomPhase.Waiting) continue;
+            if (r.Phase == TWRoomPhase.Waiting || r == c.Room) continue;
             foreach (var s in r.Seats) if (s.Token == c.Token && s.Client == null && !s.Resigned) { rejoin = r.Id; rejoinName = r.Name; }
         }
-        conn.Send(new TWWelcome { Ok = true, RejoinRoom = rejoin, RejoinRoomName = rejoinName });
-        conn.Send(BuildList());
+        return new TWWelcome { Ok = true, RejoinRoom = rejoin, RejoinRoomName = rejoinName };
     }
 
     TWRoomList BuildList()
@@ -255,7 +262,7 @@ public class TWServer
         }
         r.Spectators.Remove(c);
         c.Room = null; c.Seat = -1;
-        if (notify && c.Conn != null) { c.Conn.Send(new TWKicked { Reason = "" }); c.Conn.Send(BuildList()); }
+        if (notify && c.Conn != null) { c.Conn.Send(new TWKicked { Reason = "" }); c.Conn.Send(RejoinInfo(c)); c.Conn.Send(BuildList()); }
 
         if (r.Host == c) r.Host = PickHost(r);
         if (r.Host == null && !AnyAwayHuman(r)) { DeleteRoom(r, "部屋がなくなりました"); return; }
@@ -329,7 +336,6 @@ public class TWServer
         }
         r.TimeLimitSec = ClampTime(m.TimeLimitSec);
         r.AllowSpectators = m.AllowSpectators;
-        foreach (var s in r.Seats) s.Ready = false;
         SendState(r);
         listDirty = true;
     }
@@ -423,6 +429,23 @@ public class TWServer
         if (text.Length == 0) return;
         var line = new TWChatLine { From = c.Name, Seat = c.Seat, Text = text };
         foreach (var mem in Members(c.Room)) mem.Conn.Send(line);
+    }
+
+    void OnSetName(NetworkConnectionToClient conn, TWSetName m)
+    {
+        var c = Get(conn);
+        if (c == null || !c.Hello) return;
+        if (Time.unscaledTime - c.LastRename < 1f) { Error(c, "名前の変更は少し間をあけてください"); return; }
+        var name = Clean(m.Name, TWProtocol.MaxNameLength, "ゲスト");
+        if (name == c.Name) return;
+        c.LastRename = Time.unscaledTime;
+        var old = c.Name;
+        c.Name = name;
+        var r = c.Room;
+        if (r == null) return;
+        if (c.Seat >= 0 && c.Seat < r.Seats.Length && r.Seats[c.Seat].Client == c) r.Seats[c.Seat].Name = name;
+        SystemChat(r, old + " さんが名前を " + name + " に変えました");
+        SendState(r);   // 観戦の名前も部屋の状態から作り直される。試合中なら盤面上の名前も変わる
     }
 
     void SystemChat(Room r, string text)
@@ -535,7 +558,7 @@ public class TWServer
         {
             listDirty = false; listTimer = 0.5f;
             var msg = BuildList();
-            foreach (var c in clients.Values) if (c.Hello && c.Room == null) c.Conn.Send(msg);
+            foreach (var c in clients.Values) if (c.Hello && c.Room == null) { c.Conn.Send(RejoinInfo(c)); c.Conn.Send(msg); }   // 試合が終わった・部屋が消えたら「試合に戻る」も消す
         }
     }
 

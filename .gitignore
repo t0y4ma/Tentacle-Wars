@@ -17,6 +17,7 @@
 /[Bb]uild/
 /[Bb]uilds/*
 !/[Bb]uilds/WebGL/
+!/[Bb]uilds/TentacleWarsServer.zip
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
 *.log
@@ -112,3 +113,11 @@ InitTestScene*.unity*
 # UnityMCP のスクリーンショット（確認用）
 /[Aa]ssets/[Ss]creenshots/
 /[Aa]ssets/[Ss]creenshots.meta
+
+# 強化学習（Training/）：Python の環境とビルド結果は含めない（ソースと学習済みの重みだけ）
+/Training/.venv/
+/Training/env/bin/
+/Training/env/obj/
+/Training/env/linux/
+/Training/*.log
+!/Training/env/TWTrainEnv.csproj

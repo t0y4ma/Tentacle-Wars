@@ -37,9 +37,7 @@ public class TWLobbyScreen : TWScreen
         {
             s = s.Trim();
             if (s == TWNet.Name) return;
-            TWNet.Name = s;
-            // 名前はつなぎ直したときに伝わる
-            if (TWNet.Connected && TWNet.Room == null) { TWNet.Disconnect(); App.StartCoroutineSafe(Reconnect()); }
+            TWNet.SetName(s);   // つながっていればその場でサーバーへ伝わる（つなぎ直さない）
         });
 
         var create = TWUI.Button(lp, "部屋を作る", OpenCreate, TWUI.Style.Primary, 34);
